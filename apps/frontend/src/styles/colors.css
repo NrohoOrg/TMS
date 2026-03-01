@@ -1,0 +1,147 @@
+/*
+ * ============================================
+ * TMS Design System — Color Tokens
+ * ============================================
+ *
+ * Semantic color palette for the TMS application.
+ * Uses CSS custom properties for light/dark mode support.
+ * Tailwind v4 picks these up via @theme inline.
+ *
+ * Naming convention:
+ *   --color-{category}-{variant}
+ *
+ * Categories:
+ *   primary    → Brand blues (navigation, CTAs)
+ *   secondary  → Supporting tones
+ *   accent     → Highlight / attention
+ *   surface    → Backgrounds & cards
+ *   text       → Typography colors
+ *   border     → Borders & dividers
+ *   status     → Success, warning, error, info
+ */
+
+/* ─── Light Mode (default) ─── */
+:root {
+  /* ── Brand / Primary ── */
+  --color-primary-50: #e8f0fb;
+  --color-primary-100: #c5d9f5;
+  --color-primary-200: #9ebfee;
+  --color-primary-300: #6fa2e5;
+  --color-primary-400: #3c7edd;
+  --color-primary-500: #2265c3;
+  --color-primary-600: #1b4e98;
+  --color-primary-700: #13386c;
+  --color-primary-800: #0c2446;
+  --color-primary-900: #040b16;
+
+  /* ── Secondary ── */
+  --color-secondary-50: #f0f4f8;
+  --color-secondary-100: #d9e2ec;
+  --color-secondary-200: #bcccdc;
+  --color-secondary-300: #9fb3c8;
+  --color-secondary-400: #829ab1;
+  --color-secondary-500: #627d98;
+  --color-secondary-600: #486581;
+  --color-secondary-700: #334e68;
+  --color-secondary-800: #243b53;
+  --color-secondary-900: #102a43;
+
+  /* ── Accent ── */
+  --color-accent-50: #fff8e1;
+  --color-accent-100: #ffecb3;
+  --color-accent-200: #ffe082;
+  --color-accent-300: #ffd54f;
+  --color-accent-400: #ffca28;
+  --color-accent-500: #ffc107;
+  --color-accent-600: #ffb300;
+  --color-accent-700: #ff8f00;
+  --color-accent-800: #ff6f00;
+  --color-accent-900: #e65100;
+
+  /* ── Surfaces ── */
+  --color-surface-primary: #ffffff;
+  --color-surface-secondary: #f8f9fb;
+  --color-surface-tertiary: #f0f2f5;
+  --color-surface-elevated: #ffffff;
+  --color-surface-contrast: #040b16;
+  --color-surface-overlay: rgba(4, 11, 22, 0.5);
+
+  /* ── Text ── */
+  --color-text-primary: #0d0d0d;
+  --color-text-secondary: #404040;
+  --color-text-tertiary: #737373;
+  --color-text-contrast: #f2f2f2;
+  --color-text-muted: rgba(13, 13, 13, 0.35);
+  --color-text-title-primary: #1b4e98;
+  --color-text-title-secondary: #3c7edd;
+
+  /* ── Borders ── */
+  --color-border-default: #e5e7eb;
+  --color-border-subtle: #f0f0f0;
+  --color-border-brand: #2265c3;
+  --color-border-focused: #a6a6a6;
+  --color-border-hovered: #1b4e98;
+
+  /* ── Status ── */
+  --color-success-light: #dcfce7;
+  --color-success: #65c293;
+  --color-success-dark: #15803d;
+
+  --color-warning-light: #fef9c3;
+  --color-warning: #eab308;
+  --color-warning-dark: #a16207;
+
+  --color-error-light: #fee2e2;
+  --color-error: #b10404;
+  --color-error-dark: #7f1d1d;
+
+  --color-info-light: #dbeafe;
+  --color-info: #3b82f6;
+  --color-info-dark: #1e40af;
+}
+
+/* ─── Dark Mode ─── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ── Surfaces ── */
+    --color-surface-primary: #0a0a0a;
+    --color-surface-secondary: #111318;
+    --color-surface-tertiary: #1a1d24;
+    --color-surface-elevated: #1e2028;
+    --color-surface-contrast: #f2f2f2;
+    --color-surface-overlay: rgba(0, 0, 0, 0.7);
+
+    /* ── Text ── */
+    --color-text-primary: #f2f2f2;
+    --color-text-secondary: #a3a3a3;
+    --color-text-tertiary: #737373;
+    --color-text-contrast: #0d0d0d;
+    --color-text-muted: rgba(242, 242, 242, 0.35);
+    --color-text-title-primary: #6fa2e5;
+    --color-text-title-secondary: #9ebfee;
+
+    /* ── Borders ── */
+    --color-border-default: #2a2d35;
+    --color-border-subtle: #1e2028;
+    --color-border-brand: #3c7edd;
+    --color-border-focused: #525252;
+    --color-border-hovered: #6fa2e5;
+
+    /* ── Status (adjusted for dark) ── */
+    --color-success-light: #052e16;
+    --color-success: #4ade80;
+    --color-success-dark: #bbf7d0;
+
+    --color-warning-light: #422006;
+    --color-warning: #facc15;
+    --color-warning-dark: #fef08a;
+
+    --color-error-light: #450a0a;
+    --color-error: #f87171;
+    --color-error-dark: #fecaca;
+
+    --color-info-light: #172554;
+    --color-info: #60a5fa;
+    --color-info-dark: #bfdbfe;
+  }
+}

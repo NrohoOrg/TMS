@@ -1,26 +1,177 @@
+/*
+ * ============================================
+ * TMS Design System — Global Stylesheet
+ * ============================================
+ *
+ * Import order:
+ *   1. Tailwind CSS v4
+ *   2. Design tokens (colors, typography, spacing, effects, animations, responsive)
+ *   3. Tailwind @theme registration
+ *   4. Base styles
+ */
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ── Design Token Imports ── */
+@import "../styles/colors.css";
+@import "../styles/typography.css";
+@import "../styles/spacing.css";
+@import "../styles/effects.css";
+@import "../styles/animations.css";
+@import "../styles/responsive.css";
 
+/* ============================================
+ * Tailwind v4 Theme Registration
+ *
+ * Maps CSS custom properties → Tailwind utility classes.
+ * Usage: bg-primary-500, text-surface-primary, rounded-lg, shadow-md, etc.
+ * ============================================ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ── Fonts ── */
+  --font-sans: var(--font-display);
+  --font-mono: var(--font-mono);
+  --font-body: var(--font-body);
+
+  /* ── Colors: Primary ── */
+  --color-primary-50: var(--color-primary-50);
+  --color-primary-100: var(--color-primary-100);
+  --color-primary-200: var(--color-primary-200);
+  --color-primary-300: var(--color-primary-300);
+  --color-primary-400: var(--color-primary-400);
+  --color-primary-500: var(--color-primary-500);
+  --color-primary-600: var(--color-primary-600);
+  --color-primary-700: var(--color-primary-700);
+  --color-primary-800: var(--color-primary-800);
+  --color-primary-900: var(--color-primary-900);
+
+  /* ── Colors: Secondary ── */
+  --color-secondary-50: var(--color-secondary-50);
+  --color-secondary-100: var(--color-secondary-100);
+  --color-secondary-200: var(--color-secondary-200);
+  --color-secondary-300: var(--color-secondary-300);
+  --color-secondary-400: var(--color-secondary-400);
+  --color-secondary-500: var(--color-secondary-500);
+  --color-secondary-600: var(--color-secondary-600);
+  --color-secondary-700: var(--color-secondary-700);
+  --color-secondary-800: var(--color-secondary-800);
+  --color-secondary-900: var(--color-secondary-900);
+
+  /* ── Colors: Accent ── */
+  --color-accent-50: var(--color-accent-50);
+  --color-accent-100: var(--color-accent-100);
+  --color-accent-200: var(--color-accent-200);
+  --color-accent-300: var(--color-accent-300);
+  --color-accent-400: var(--color-accent-400);
+  --color-accent-500: var(--color-accent-500);
+  --color-accent-600: var(--color-accent-600);
+  --color-accent-700: var(--color-accent-700);
+  --color-accent-800: var(--color-accent-800);
+  --color-accent-900: var(--color-accent-900);
+
+  /* ── Colors: Surfaces ── */
+  --color-surface-primary: var(--color-surface-primary);
+  --color-surface-secondary: var(--color-surface-secondary);
+  --color-surface-tertiary: var(--color-surface-tertiary);
+  --color-surface-elevated: var(--color-surface-elevated);
+  --color-surface-contrast: var(--color-surface-contrast);
+
+  /* ── Colors: Text ── */
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-contrast: var(--color-text-contrast);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-title-primary: var(--color-text-title-primary);
+  --color-text-title-secondary: var(--color-text-title-secondary);
+
+  /* ── Colors: Borders ── */
+  --color-border-default: var(--color-border-default);
+  --color-border-subtle: var(--color-border-subtle);
+  --color-border-brand: var(--color-border-brand);
+  --color-border-focused: var(--color-border-focused);
+  --color-border-hovered: var(--color-border-hovered);
+
+  /* ── Colors: Status ── */
+  --color-success-light: var(--color-success-light);
+  --color-success: var(--color-success);
+  --color-success-dark: var(--color-success-dark);
+
+  --color-warning-light: var(--color-warning-light);
+  --color-warning: var(--color-warning);
+  --color-warning-dark: var(--color-warning-dark);
+
+  --color-error-light: var(--color-error-light);
+  --color-error: var(--color-error);
+  --color-error-dark: var(--color-error-dark);
+
+  --color-info-light: var(--color-info-light);
+  --color-info: var(--color-info);
+  --color-info-dark: var(--color-info-dark);
+
+  /* ── Border Radius ── */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+  --radius-full: var(--radius-full);
+
+  /* ── Shadows ── */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+
+  /* ── Animations ── */
+  --animate-fade-in: fade-in var(--duration-normal) var(--ease-out);
+  --animate-fade-out: fade-out var(--duration-normal) var(--ease-in);
+  --animate-slide-in-up: slide-in-up var(--duration-slow) var(--ease-out);
+  --animate-slide-in-down: slide-in-down var(--duration-slow) var(--ease-out);
+  --animate-slide-in-left: slide-in-left var(--duration-slow) var(--ease-out);
+  --animate-slide-in-right: slide-in-right var(--duration-slow) var(--ease-out);
+  --animate-scale-in: scale-in var(--duration-normal) var(--ease-spring);
+  --animate-spin-slow: spin-slow 2s linear infinite;
+  --animate-pulse-soft: pulse-soft 2s var(--ease-in-out) infinite;
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-loop-scroll: loop-scroll 50s linear infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ============================================
+ * Base Styles
+ * ============================================ */
+*,
+*::before,
+*::after {
+  border-color: var(--color-border-default);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Focus ring utility ── */
+.focus-ring {
+  outline: 2px solid var(--color-border-brand);
+  outline-offset: 2px;
+}
+
+/* ── Skeleton loader ── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-tertiary) 25%,
+    var(--color-surface-secondary) 50%,
+    var(--color-surface-tertiary) 75%
+  );
+  background-size: 400% 100%;
+  animation: var(--animate-shimmer);
+  border-radius: var(--radius-md);
 }

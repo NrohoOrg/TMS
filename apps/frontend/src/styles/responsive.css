@@ -1,0 +1,51 @@
+/*
+ * ============================================
+ * TMS Design System — Responsive Breakpoints
+ * ============================================
+ *
+ * Tailwind v4 default breakpoints are used (sm, md, lg, xl, 2xl).
+ * This file defines custom container queries and responsive utilities.
+ *
+ * Breakpoint reference:
+ *   sm   →  640px   (Mobile landscape)
+ *   md   →  768px   (Tablet portrait)
+ *   lg   → 1024px   (Tablet landscape / Small desktop)
+ *   xl   → 1280px   (Desktop)
+ *   2xl  → 1536px   (Large desktop)
+ *
+ * Custom application breakpoints for the TMS dashboard:
+ */
+
+:root {
+  --breakpoint-mobile: 480px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+  --breakpoint-wide: 1280px;
+  --breakpoint-ultrawide: 1536px;
+}
+
+/* ─── Responsive Utility Classes ─── */
+
+/* Hide on mobile, show on desktop */
+@media (max-width: 1023px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+/* Hide on desktop, show on mobile */
+@media (min-width: 1024px) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+/* Container that adapts to sidebar state */
+.main-content {
+  margin-left: var(--sidebar-width);
+  transition: margin-left var(--duration-slow) var(--ease-default);
+}
+
+.main-content[data-sidebar-collapsed="true"] {
+  margin-left: var(--sidebar-width-collapsed);
+}
