@@ -1,0 +1,275 @@
+/*
+ * ============================================
+ * shadcn/ui Compatibility Layer
+ * ============================================
+ *
+ * Maps the shadcn CSS variable convention (HSL triplet consumed via
+ * `hsl(var(--primary))`) to the existing TMS hex-based design tokens.
+ *
+ * Because the shadcn components shipped with Tailwind v3 utilities
+ * such as `bg-primary`, `text-muted-foreground`, etc. that resolve
+ * to `hsl(var(--…))`, we re-declare the variables as *full* color
+ * values (hex / oklch / rgb) so Tailwind v4's native utility classes
+ * work out of the box.
+ *
+ * NOTE: Variables are declared ONCE in :root. Dark mode overrides
+ * follow below.  If you need to tweak a color used by the shadcn
+ * components, change the mapped TMS token in `colors.css` — the
+ * bridge will forward the value automatically.
+ *
+ * Font loading is handled in layout.tsx via next/font or <link>.
+ * The .font-display and .font-sans utility classes are defined
+ * at the bottom of this file.
+ */
+
+/* ── Light mode ── */
+:root {
+  /* ── Core semantic ── */
+  --background: var(--color-surface-primary);
+  --foreground: var(--color-text-primary);
+
+  --card: var(--color-surface-secondary);
+  --card-foreground: var(--color-text-primary);
+
+  --popover: var(--color-surface-primary);
+  --popover-foreground: var(--color-text-primary);
+
+  --primary: var(--color-primary-500);
+  --primary-foreground: #ffffff;
+
+  --secondary: var(--color-secondary-500);
+  --secondary-foreground: #ffffff;
+
+  --muted: var(--color-surface-tertiary);
+  --muted-foreground: var(--color-text-tertiary);
+
+  --accent: var(--color-accent-500);
+  --accent-foreground: var(--color-text-primary);
+
+  --destructive: var(--color-error);
+  --destructive-foreground: #ffffff;
+
+  --border: var(--color-border-default);
+  --input: var(--color-border-default);
+  --ring: var(--color-primary-500);
+
+  --radius: 0.5rem;
+
+  /* ── Sidebar (dark blue) ── */
+  --sidebar-background: var(--color-primary-800);
+  --sidebar-foreground: #c5d9f5;
+  --sidebar-primary: var(--color-primary-50);
+  --sidebar-primary-foreground: var(--color-primary-800);
+  --sidebar-accent: var(--color-primary-700);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: var(--color-primary-700);
+  --sidebar-ring: var(--color-primary-500);
+
+  /* ── Extended TMS palette (hex shortcut) ── */
+  --tms-primary-50: var(--color-primary-50);
+  --tms-primary-100: var(--color-primary-100);
+  --tms-primary-200: var(--color-primary-200);
+  --tms-primary-300: var(--color-primary-300);
+  --tms-primary-400: var(--color-primary-400);
+  --tms-primary-500: var(--color-primary-500);
+  --tms-primary-600: var(--color-primary-600);
+  --tms-primary-700: var(--color-primary-700);
+  --tms-primary-800: var(--color-primary-800);
+  --tms-primary-900: var(--color-primary-900);
+
+  --tms-success: var(--color-success);
+  --tms-success-light: var(--color-success-light);
+  --tms-success-dark: var(--color-success-dark);
+
+  --tms-warning: var(--color-warning);
+  --tms-warning-light: var(--color-warning-light);
+  --tms-warning-dark: var(--color-warning-dark);
+
+  --tms-error: var(--color-error);
+  --tms-error-light: var(--color-error-light);
+  --tms-error-dark: var(--color-error-dark);
+
+  --tms-info: var(--color-info);
+  --tms-info-light: var(--color-info-light);
+  --tms-info-dark: var(--color-info-dark);
+
+  /* ── Charts ── */
+  --chart-1: var(--color-primary-500);
+  --chart-2: var(--color-success);
+  --chart-3: var(--color-accent-500);
+  --chart-4: var(--color-error);
+  --chart-5: var(--color-secondary-500);
+}
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-surface-primary);
+    --foreground: var(--color-text-primary);
+
+    --card: var(--color-surface-secondary);
+    --card-foreground: var(--color-text-primary);
+
+    --popover: var(--color-surface-secondary);
+    --popover-foreground: var(--color-text-primary);
+
+    --primary: var(--color-primary-300);
+    --primary-foreground: var(--color-primary-900);
+
+    --secondary: var(--color-secondary-700);
+    --secondary-foreground: var(--color-text-primary);
+
+    --muted: var(--color-surface-tertiary);
+    --muted-foreground: var(--color-text-secondary);
+
+    --accent: var(--color-accent-500);
+    --accent-foreground: var(--color-text-primary);
+
+    --destructive: var(--color-error);
+    --destructive-foreground: var(--color-text-primary);
+
+    --border: var(--color-border-default);
+    --input: var(--color-border-default);
+    --ring: var(--color-primary-300);
+
+    --sidebar-background: var(--color-surface-secondary);
+    --sidebar-foreground: var(--color-text-secondary);
+    --sidebar-primary: var(--color-primary-300);
+    --sidebar-primary-foreground: var(--color-surface-secondary);
+    --sidebar-accent: var(--color-surface-tertiary);
+    --sidebar-accent-foreground: var(--color-text-primary);
+    --sidebar-border: var(--color-border-default);
+    --sidebar-ring: var(--color-primary-300);
+
+    --tms-success: var(--color-success);
+    --tms-success-light: var(--color-success-light);
+    --tms-success-dark: var(--color-success-dark);
+
+    --tms-warning: var(--color-warning);
+    --tms-warning-light: var(--color-warning-light);
+    --tms-warning-dark: var(--color-warning-dark);
+
+    --tms-error: var(--color-error);
+    --tms-error-light: var(--color-error-light);
+    --tms-error-dark: var(--color-error-dark);
+
+    --tms-info: var(--color-info);
+    --tms-info-light: var(--color-info-light);
+    --tms-info-dark: var(--color-info-dark);
+  }
+}
+
+/* ============================================
+ * Tailwind v4 @theme — register shadcn tokens
+ * so utility classes like bg-primary,
+ * text-muted-foreground, etc. resolve.
+ * ============================================ */
+@theme inline {
+  /* ── Core semantic colors ── */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* ── Sidebar ── */
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ── TMS status (utility: bg-tms-success, text-tms-warning, etc.) ── */
+  --color-tms-success: var(--tms-success);
+  --color-tms-success-light: var(--tms-success-light);
+  --color-tms-success-dark: var(--tms-success-dark);
+
+  --color-tms-warning: var(--tms-warning);
+  --color-tms-warning-light: var(--tms-warning-light);
+  --color-tms-warning-dark: var(--tms-warning-dark);
+
+  --color-tms-error: var(--tms-error);
+  --color-tms-error-light: var(--tms-error-light);
+  --color-tms-error-dark: var(--tms-error-dark);
+
+  --color-tms-info: var(--tms-info);
+  --color-tms-info-light: var(--tms-info-light);
+  --color-tms-info-dark: var(--tms-info-dark);
+
+  /* ── Charts ── */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* ── Radius override ── */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  /* ── Pulse dot animation (used in health indicators) ── */
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ============================================
+ * Additional keyframes for shadcn components
+ * ============================================ */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ============================================
+ * Font families for shadcn classes
+ * ============================================ */
+.font-display {
+  font-family: var(--font-space-grotesk), 'Space Grotesk', system-ui, sans-serif;
+}
+
+.font-sans {
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+}
+
+/* ============================================
+ * Custom scrollbar (matches lovable)
+ * ============================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}

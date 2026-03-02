@@ -20,6 +20,9 @@
 @import "../styles/animations.css";
 @import "../styles/responsive.css";
 
+/* ── shadcn/ui Compatibility Layer ── */
+@import "../styles/shadcn-compat.css";
+
 /* ============================================
  * Tailwind v4 Theme Registration
  *

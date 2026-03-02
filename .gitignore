@@ -2,3 +2,8 @@
 .nx/installation
 .nx/cache
 .nx/workspace-data
+# OS
+.DS_Store
+
+# IDE
+.vscode/tasks.json
