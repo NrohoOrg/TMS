@@ -6,9 +6,9 @@ This guide covers the complete workflow for developing, testing, committing, and
 
 ## 📋 Prerequisites
 
-- **Git remotes configured** (pushes to both `NrohoOrg/TMS` and `badriamouri/TMS`)
+- **Git remote configured** to `NrohoOrg/TMS` (public repo)
 - **GitHub Personal Access Token** stored in macOS Keychain
-- **Vercel project** connected to `badriamouri/TMS` with Root Directory set to `apps/frontend`
+- **Vercel project** connected to `NrohoOrg/TMS` with Root Directory set to `apps/frontend`
 
 ---
 
@@ -149,15 +149,13 @@ git commit -m "style(frontend): update spacing on dispatcher tasks page
 
 ---
 
-### 7. Push to GitHub (Both Remotes)
+### 7. Push to GitHub
 
 ```bash
 git push origin main
 ```
 
-This pushes to:
-- ✅ `NrohoOrg/TMS` (organization backup)
-- ✅ `badriamouri/TMS` (personal, public)
+This pushes to `NrohoOrg/TMS` (public repo).
 
 **Expected output:**
 ```
@@ -165,8 +163,6 @@ Enumerating objects: X, done.
 Counting objects: 100% (X/X), done.
 ...
 Writing objects: 100% (X/X), done.
-To https://github.com/badriamouri/TMS.git
-   d38e224..abc1234  main -> main
 To https://github.com/NrohoOrg/TMS.git
    d38e224..abc1234  main -> main
 ```
@@ -275,7 +271,6 @@ git remote -v
 **Expected:**
 ```
 origin  https://github.com/NrohoOrg/TMS.git (fetch)
-origin  https://github.com/badriamouri/TMS.git (push)
 origin  https://github.com/NrohoOrg/TMS.git (push)
 ```
 
@@ -349,7 +344,6 @@ git push origin main
 
 - **Local dev:** http://localhost:3000
 - **Vercel dashboard:** https://vercel.com/dashboard
-- **GitHub org repo:** https://github.com/NrohoOrg/TMS
-- **GitHub personal repo:** https://github.com/badriamouri/TMS
+- **GitHub repo:** https://github.com/NrohoOrg/TMS
 - **Next.js docs:** https://nextjs.org/docs
 - **Vercel docs:** https://vercel.com/docs
