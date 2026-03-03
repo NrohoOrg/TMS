@@ -19,3 +19,5 @@ export * from "./textarea";
 export * from "./tooltip";
 export * from "./toast";
 export { Toaster } from "./toaster";
+export * from "./sidebar";
+

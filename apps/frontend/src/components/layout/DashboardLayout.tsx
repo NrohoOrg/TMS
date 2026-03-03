@@ -19,13 +19,15 @@ import {
   BarChart3,
   MapPin,
   LogOut,
-  ChevronRight,
-  Menu,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import {
+  Sidebar,
+  SidebarBody,
+  SidebarLink,
+} from "@/components/ui/sidebar";
+import { motion } from "framer-motion";
 
 /* ── Types ── */
 type UserRole = "admin" | "dispatcher" | "driver";
@@ -82,134 +84,110 @@ export interface DashboardLayoutProps {
 
 export default function DashboardLayout({
   children,
-  role,
+  role = "admin",
 }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  const activeRole = role ?? MOCK_USER.role;
-  const navItems = NAV_ITEMS[activeRole];
+  const activeRole = role || "admin";
+  const navItems = NAV_ITEMS[activeRole] || [];
+
+  // Convert nav items to sidebar links format
+  const links = navItems.map((item) => ({
+    label: item.label,
+    href: item.path,
+    icon: (
+      <item.icon
+        className={cn(
+          "text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0",
+          pathname === item.path && "text-sidebar-primary dark:text-sidebar-primary"
+        )}
+      />
+    ),
+  }));
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* ── Mobile backdrop ── */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      {/* ── Sidebar ── */}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 bg-sidebar flex flex-col shrink-0 transform transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
-          mobileOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        {/* Logo */}
-        <div className="p-5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden">
-            <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28}  />
+    <div className="flex flex-col lg:flex-row h-screen w-full overflow-hidden">
+      <Sidebar open={open} setOpen={setOpen}>
+        <SidebarBody className="justify-between gap-10">
+          <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden">
+            {open ? <Logo /> : <LogoIcon />}
+            <div className="mt-8 flex flex-col gap-2">
+              {links.map((link, idx) => (
+                <SidebarLink key={idx} link={link} />
+              ))}
+            </div>
           </div>
           <div>
-            <span className="text-lg font-display font-bold text-sidebar-primary">
-              TMS
-            </span>
-            <span className="text-[10px] block text-sidebar-foreground/50 -mt-0.5 tracking-wider uppercase">
-              {ROLE_LABELS[activeRole]}
-            </span>
+            <SidebarLink
+              link={{
+                label: MOCK_USER.name,
+                href: "#",
+                icon: (
+                  <div className="h-7 w-7 flex-shrink-0 rounded-full bg-sidebar-accent flex items-center justify-center">
+                    <span className="text-xs font-semibold text-sidebar-primary">
+                      {MOCK_USER.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")}
+                    </span>
+                  </div>
+                ),
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 mt-2"
+              onClick={() => router.push("/login")}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              {open && <span>Sign Out</span>}
+            </Button>
           </div>
-          {/* Close (mobile) */}
-          <button
-            className="ml-auto lg:hidden text-sidebar-foreground/50 hover:text-sidebar-foreground"
-            onClick={() => setMobileOpen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <Separator className="bg-sidebar-border mx-4" />
-
-        {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto mt-2">
-          {navItems.map((item) => {
-            const isActive = pathname === item.path;
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50",
-                )}
-              >
-                <item.icon
-                  className={cn(
-                    "w-[18px] h-[18px]",
-                    isActive && "text-sidebar-primary",
-                  )}
-                />
-                <span className="flex-1">{item.label}</span>
-                {isActive && (
-                  <ChevronRight className="w-4 h-4 text-sidebar-primary opacity-60" />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User section */}
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-sidebar-accent flex items-center justify-center text-sm font-semibold text-sidebar-primary">
-              {MOCK_USER.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-sidebar-foreground truncate">
-                {MOCK_USER.name}
-              </div>
-              <div className="text-xs text-sidebar-foreground/50 truncate">
-                {MOCK_USER.email}
-              </div>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-            onClick={() => router.push("/login")}
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
-        </div>
-      </aside>
+        </SidebarBody>
+      </Sidebar>
 
       {/* ── Main Content ── */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar */}
-        <div className="sticky top-0 z-20 bg-background border-b border-border p-3 flex items-center gap-3 lg:hidden">
-          <button onClick={() => setMobileOpen(true)}>
-            <Menu className="w-5 h-5 text-foreground" />
-          </button>
-          <div className="flex items-center gap-2">
-            <Image src="/TMS_LOGO.png" alt="TMS Logo" width={24} height={24} />
-            <span className="font-display font-bold text-foreground">TMS</span>
-          </div>
-        </div>
-
-        <main className="flex-1 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <main className="flex-1 overflow-y-auto bg-background">
           <div className="animate-fade-in">{children}</div>
         </main>
       </div>
     </div>
   );
 }
+
+const Logo = () => {
+  return (
+    <Link
+      href="#"
+      className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
+    >
+      <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
+        <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+      </div>
+      <motion.span
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="font-display font-bold text-sidebar-primary whitespace-pre"
+      >
+        TMS
+      </motion.span>
+    </Link>
+  );
+};
+
+const LogoIcon = () => {
+  return (
+    <Link
+      href="#"
+      className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
+    >
+      <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
+        <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+      </div>
+    </Link>
+  );
+};
