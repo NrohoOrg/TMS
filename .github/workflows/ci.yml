@@ -106,6 +106,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api prisma migrate deploy
+      - run: pnpm --filter api prisma generate
       - run: pnpm nx run api:test:e2e
 
   build:
