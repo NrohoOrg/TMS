@@ -67,17 +67,21 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_USER: dispatch
           POSTGRES_PASSWORD: dispatch
           POSTGRES_DB: dispatch_test
         options: >-
-          --health-cmd "pg_isready -U dispatch"
+          --health-cmd "pg_isready -U dispatch -d dispatch_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
       redis:
         image: redis:7-alpine
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
