@@ -72,7 +72,7 @@ jobs:
           POSTGRES_PASSWORD: dispatch
           POSTGRES_DB: dispatch_test
         options: >-
-          --health-cmd pg_isready -U dispatch
+          --health-cmd "pg_isready -U dispatch"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
