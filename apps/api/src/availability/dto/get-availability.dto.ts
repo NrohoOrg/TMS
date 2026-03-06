@@ -1,0 +1,11 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, Matches } from 'class-validator';
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+export class GetAvailabilityDto {
+  @ApiPropertyOptional({ example: '2026-03-04' })
+  @IsOptional()
+  @Matches(DATE_REGEX, { message: 'date must be YYYY-MM-DD' })
+  date?: string;
+}

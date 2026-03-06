@@ -1,0 +1,32 @@
+{
+  "name": "optimizer",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash -c \"cd apps/optimizer && source venv/bin/activate 2>/dev/null || true && uvicorn main:app --reload --host 0.0.0.0 --port 8000\""
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash -c \"cd apps/optimizer && source venv/bin/activate 2>/dev/null || true && pytest\""
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash -c \"cd apps/optimizer && source venv/bin/activate 2>/dev/null || true && ruff check .\""
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash -c \"cd apps/optimizer && pip install -r requirements.txt\""
+      }
+    }
+  },
+  "tags": []
+}
+

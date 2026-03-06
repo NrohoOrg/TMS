@@ -1,0 +1,29 @@
+{
+  "name": "infra",
+  "projectType": "application",
+  "targets": {
+    "up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose up -d postgres redis",
+        "cwd": "."
+      }
+    },
+    "down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose down",
+        "cwd": "."
+      }
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose logs -f postgres redis",
+        "cwd": "."
+      }
+    }
+  },
+  "tags": []
+}
+

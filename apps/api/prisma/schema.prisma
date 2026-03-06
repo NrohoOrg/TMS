@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  name          String?
+  phone         String?
+  lastLogin     DateTime?
+  passwordHash  String
+  role          Role     @default(DISPATCHER)
+  createdAt     DateTime @default(now())
+  refreshTokens RefreshToken[]
+  plans         Plan[]
+  optimizationJobs OptimizationJob[]
+}
+
+enum Role {
+  ADMIN
+  DISPATCHER
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Driver {
+  id            String   @id @default(uuid())
+  name          String
+  phone         String
+  shiftStart    String
+  shiftEnd      String
+  depotLat      Float
+  depotLng      Float
+  capacityUnits Int?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  availability  Availability[]
+  routes        Route[]
+}
+
+model Availability {
+  id                 String   @id @default(uuid())
+  driverId           String
+  date               DateTime @db.Date
+  available          Boolean  @default(true)
+  shiftStartOverride String?
+  shiftEndOverride   String?
+  driver             Driver   @relation(fields: [driverId], references: [id])
+  @@unique([driverId, date])
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum TaskStatus {
+  pending
+  assigned
+  cancelled
+}
+
+model Task {
+  id                    String     @id @default(uuid())
+  title                 String
+  pickupAddress         String
+  pickupLat             Float
+  pickupLng             Float
+  pickupWindowStart     DateTime
+  pickupWindowEnd       DateTime
+  pickupServiceMinutes  Int        @default(0)
+  dropoffAddress        String
+  dropoffLat            Float
+  dropoffLng            Float
+  dropoffDeadline       DateTime
+  dropoffServiceMinutes Int        @default(0)
+  priority              Priority   @default(normal)
+  status                TaskStatus @default(pending)
+  notes                 String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  stops                 Stop[]
+}
+
+enum PlanStatus {
+  draft
+  published
+}
+
+model Plan {
+  id          String     @id @default(uuid())
+  date        DateTime   @db.Date
+  status      PlanStatus @default(draft)
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  createdById String
+  createdBy   User       @relation(fields: [createdById], references: [id])
+  routes      Route[]
+  jobs        OptimizationJob[]
+}
+
+model Route {
+  id              String  @id @default(uuid())
+  planId          String
+  driverId        String
+  totalDistanceM  Int     @default(0)
+  totalTimeS      Int     @default(0)
+  plan            Plan    @relation(fields: [planId], references: [id])
+  driver          Driver  @relation(fields: [driverId], references: [id])
+  stops           Stop[]
+}
+
+enum StopType {
+  pickup
+  dropoff
+}
+
+enum StopStatus {
+  pending
+  arrived
+  done
+  skipped
+}
+
+model Stop {
+  id             String      @id @default(uuid())
+  routeId        String
+  taskId         String
+  sequence       Int
+  type           StopType
+  etaS           Int
+  departureS     Int
+  actualArrivalS Int?
+  completedAt    DateTime?
+  notes          String?
+  status         StopStatus  @default(pending)
+  route          Route       @relation(fields: [routeId], references: [id])
+  task           Task        @relation(fields: [taskId], references: [id])
+  stopEvents     StopEvent[]
+}
+
+model StopEvent {
+  id        String     @id @default(uuid())
+  stopId    String
+  status    StopStatus
+  timestamp DateTime   @default(now())
+  notes     String?
+  createdBy String
+  stop      Stop       @relation(fields: [stopId], references: [id])
+}
+
+enum JobStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+model OptimizationJob {
+  id              String    @id @default(uuid())
+  createdById     String
+  status          JobStatus @default(queued)
+  progressPercent Int       @default(0)
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  planId          String?
+  error           String?
+  requestSnapshot Json?
+  resultSnapshot  Json?
+  createdAt       DateTime  @default(now())
+  createdBy       User      @relation(fields: [createdById], references: [id])
+  plan            Plan?     @relation(fields: [planId], references: [id])
+}
+
+model Config {
+  id               Int      @id @default(1)
+  maxSolveSeconds  Int      @default(30)
+  speedKmh         Float    @default(40)
+  objectiveWeights Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
+  updatedAt        DateTime @updatedAt
+}
+
+model GeocodeCache {
+  normalizedQuery String   @id
+  results         Json
+  expiresAt       DateTime
+}

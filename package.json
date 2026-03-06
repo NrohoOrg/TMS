@@ -1,0 +1,19 @@
+{
+  "name": "tms",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "nx run-many -t serve --projects=api,optimizer --parallel",
+    "build": "nx run-many -t build --all",
+    "test": "nx run-many -t test --all",
+    "lint": "nx run-many -t lint --all"
+  },
+  "devDependencies": {
+    "@nx/nest": "22.5.3",
+    "nx": "22.5.3"
+  }
+}

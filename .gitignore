@@ -2,8 +2,24 @@
 .nx/installation
 .nx/cache
 .nx/workspace-data
+
 # OS
 .DS_Store
 
 # IDE
 .vscode/tasks.json
+
+# Node / JS
+node_modules
+dist
+.env
+
+# Python
+__pycache__
+.pytest_cache
+*.pyc
+apps/optimizer/__pycache__
+venv/
+.venv/
+coverage/
+*.egg-info
