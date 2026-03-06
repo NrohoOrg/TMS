@@ -2269,7 +2269,7 @@ ws://api.tms.dz/ws?token={jwt_token}
 
 ## Environment URLs
 
-- **Development:** `http://localhost:8000/api`
+- **Development:** `http://localhost:3001/api`
 - **Staging:** `https://staging-api.tms.dz/api`
 - **Production:** `https://api.tms.dz/api`
 
