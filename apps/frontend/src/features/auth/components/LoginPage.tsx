@@ -1,37 +1,50 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import Image from "next/image";
-
-const QUICK_LOGINS = [
-  { label: "Admin", email: "admin@tms.dz", role: "admin", href: "/admin" },
-  { label: "Dispatcher", email: "dispatch@tms.dz", role: "dispatcher", href: "/dispatcher" },
-  { label: "Driver", email: "driver@tms.dz", role: "driver", href: "/driver" },
-];
-
-const ROLE_ROUTES: Record<string, string> = {
-  admin: "/admin",
-  dispatcher: "/dispatcher",
-  driver: "/driver",
-};
+import { useLogin, useRedirectIfAuthenticated } from "../hooks";
+import { loginSchema, type LoginFormValues } from "../schema";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const loginMutation = useLogin();
+  const { isLoading: isBootstrapping } = useRedirectIfAuthenticated();
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  function onSubmit(values: LoginFormValues) {
+    loginMutation.mutate(values);
+  }
+
+  function quickLogin(email: string, password: string) {
+    setValue("email", email);
+    setValue("password", password);
+    loginMutation.mutate({ email, password });
+  }
+
+  // While checking existing session, show a minimal loading state
+  if (isBootstrapping) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
@@ -80,63 +93,70 @@ export default function LoginPage() {
           </div>
 
           <Card>
-            <CardContent className="p-6 space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@company.dz"
-                  defaultValue={selectedRole ? QUICK_LOGINS.find((q) => q.role === selectedRole)?.email : ""}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
+            <CardContent className="p-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
                   <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    defaultValue="password"
+                    id="email"
+                    type="email"
+                    placeholder="name@company.dz"
+                    autoComplete="email"
+                    {...register("email")}
                   />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPassword((v) => !v)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
-                  </button>
+                  {errors.email && (
+                    <p className="text-sm text-destructive">{errors.email.message}</p>
+                  )}
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Login as</Label>
-                <Select value={selectedRole} onValueChange={setSelectedRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a role" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                    <SelectItem value="dispatcher">Dispatcher</SelectItem>
-                    <SelectItem value="driver">Driver</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={() => {
-                  if (selectedRole && ROLE_ROUTES[selectedRole]) {
-                    router.push(ROLE_ROUTES[selectedRole]);
-                  }
-                }}
-                disabled={!selectedRole}
-              >
-                Sign In
-              </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      {...register("password")}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => setShowPassword((v) => !v)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-sm text-destructive">{errors.password.message}</p>
+                  )}
+                </div>
+
+                {loginMutation.isError && (
+                  <p className="text-sm text-destructive text-center">
+                    Invalid email or password. Please try again.
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  disabled={loginMutation.isPending}
+                >
+                  {loginMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Signing in…
+                    </>
+                  ) : (
+                    "Sign In"
+                  )}
+                </Button>
+              </form>
             </CardContent>
           </Card>
 
@@ -146,18 +166,28 @@ export default function LoginPage() {
               Quick Access (Demo)
             </p>
             <div className="flex gap-2 justify-center">
-              {QUICK_LOGINS.map((q) => (
-                <Button
-                  key={q.role}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => router.push(q.href)}
-                >
-                  {q.label}
-                </Button>
-              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                disabled={loginMutation.isPending}
+                onClick={() => quickLogin("admin@example.com", "Admin1234!")}
+              >
+                Admin
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                disabled={loginMutation.isPending}
+                onClick={() => quickLogin("dispatcher@example.com", "Dispatch1234!")}
+              >
+                Dispatcher
+              </Button>
             </div>
+            <p className="text-xs text-center text-muted-foreground">
+              New accounts are created by an Administrator.
+            </p>
           </div>
         </div>
       </div>

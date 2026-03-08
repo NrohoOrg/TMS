@@ -3,7 +3,7 @@
 import { type ReactNode, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -28,6 +28,7 @@ import {
   SidebarLink,
 } from "@/components/ui/sidebar";
 import { motion } from "framer-motion";
+import { useLogout, useRequireAuth } from "@/features/auth";
 
 /* ── Types ── */
 type UserRole = "admin" | "dispatcher" | "driver";
@@ -62,19 +63,6 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   ],
 };
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Administrator",
-  dispatcher: "Dispatcher",
-  driver: "Driver",
-};
-
-/* ── Mock user — swap this to use a real user context later ── */
-const MOCK_USER = {
-  name: "Karim Benali",
-  email: "admin@tms.dz",
-  role: "admin" as UserRole,
-};
-
 /* ── Component ── */
 export interface DashboardLayoutProps {
   children: ReactNode;
@@ -87,10 +75,15 @@ export default function DashboardLayout({
   role = "admin",
 }: DashboardLayoutProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { user } = useRequireAuth();
+  const logoutMutation = useLogout();
 
-  const activeRole = role || "admin";
+  // Derive role from auth store when available, fall back to prop
+  const activeRole: UserRole = user
+    ? (user.role.toLowerCase() as UserRole)
+    : role || "admin";
+  const displayName = user?.name ?? "User";
   const navItems = NAV_ITEMS[activeRole] || [];
 
   // Convert nav items to sidebar links format
@@ -122,12 +115,12 @@ export default function DashboardLayout({
           <div>
             <SidebarLink
               link={{
-                label: MOCK_USER.name,
+                label: displayName,
                 href: "#",
                 icon: (
                   <div className="h-7 w-7 flex-shrink-0 rounded-full bg-sidebar-accent flex items-center justify-center">
                     <span className="text-xs font-semibold text-sidebar-primary">
-                      {MOCK_USER.name
+                      {displayName
                         .split(" ")
                         .map((n) => n[0])
                         .join("")}
@@ -140,7 +133,8 @@ export default function DashboardLayout({
               variant="ghost"
               size="sm"
               className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 mt-2"
-              onClick={() => router.push("/login")}
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
             >
               <LogOut className="w-4 h-4 mr-2" />
               {open && <span>Sign Out</span>}
