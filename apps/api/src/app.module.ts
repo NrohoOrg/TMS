@@ -81,6 +81,21 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
     }),
     LoggerModule.forRoot({
       pinoHttp: {
+<<<<<<< Updated upstream
+=======
+        ...(process.env['NODE_ENV'] !== 'production' && {
+          transport: {
+            target: 'pino-pretty',
+            options: {
+              colorize: true,
+              translateTime: 'SYS:HH:MM:ss',
+              ignore: 'pid,hostname',
+              singleLine: true,
+              messageFormat: '{msg} {req.method} {req.url}',
+            },
+          },
+        }),
+>>>>>>> Stashed changes
         genReqId: (req, res) => {
           const requestIdHeader = req.headers['x-request-id'];
           const requestId =

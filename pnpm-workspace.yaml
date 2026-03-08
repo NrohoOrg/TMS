@@ -1,3 +1,18 @@
 packages:
+<<<<<<< Updated upstream
   - 'apps/*'
   - 'packages/*'
+=======
+  - apps/*
+  - packages/*
+
+ignoredBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/client'
+  - '@prisma/engines'
+  - msgpackr-extract
+  - nx
+  - prisma
+  - sharp
+  - unrs-resolver
+>>>>>>> Stashed changes

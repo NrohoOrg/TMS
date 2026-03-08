@@ -1,0 +1,309 @@
+# ============================================
+# TMS API Test File
+# ============================================
+# Uses VS Code REST Client extension
+# Install: ms-vscode.rest-client
+# 
+# Usage:
+# 1. Start the API server: nx run api:serve
+# 2. Click "Send Request" above each request
+# 3. Update @token and @refreshToken after login
+# ============================================
+
+@baseUrl = http://localhost:3001/api
+@contentType = application/json
+
+# Variables (update after login)
+@token = YOUR_ACCESS_TOKEN_HERE
+@refreshToken = YOUR_REFRESH_TOKEN_HERE
+
+# ============================================
+# HEALTH CHECK (Not wrapped in envelope)
+# ============================================
+
+### Health Check
+GET http://localhost:3001/health
+
+# ============================================
+# AUTH ENDPOINTS
+# ============================================
+
+### Login - Get access and refresh tokens
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@example.com",
+  "password": "Admin1234!"
+}
+
+### Get Current User Profile (requires auth)
+GET {{baseUrl}}/auth/me
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Refresh Token - Get new token pair
+POST {{baseUrl}}/auth/refresh
+Content-Type: {{contentType}}
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Logout - Revoke refresh tokens
+POST {{baseUrl}}/auth/logout
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{}
+
+### Password Reset (NOT IMPLEMENTED - returns 501)
+POST {{baseUrl}}/auth/password-reset
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@example.com"
+}
+
+### Password Reset Confirm (NOT IMPLEMENTED - returns 501)
+POST {{baseUrl}}/auth/password-reset/confirm
+Content-Type: {{contentType}}
+
+{
+  "token": "reset-token",
+  "password": "newPassword123"
+}
+
+# ============================================
+# TASKS ENDPOINTS
+# ============================================
+
+### List Tasks (with pagination and filters)
+GET {{baseUrl}}/dispatcher/tasks?page=1&limit=10
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### List Tasks with Status Filter
+GET {{baseUrl}}/dispatcher/tasks?status=pending&page=1&limit=10
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Get Task by ID
+@taskId = YOUR_TASK_ID_HERE
+GET {{baseUrl}}/dispatcher/tasks/{{taskId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Create Task
+# @name createTask
+POST {{baseUrl}}/dispatcher/tasks
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "title": "Airport pickup",
+  "pickupAddress": "Algiers Airport — Terminal 1",
+  "pickupLat": 36.691,
+  "pickupLng": 3.215,
+  "pickupWindowStart": "2026-03-08T08:00:00.000Z",
+  "pickupWindowEnd": "2026-03-08T09:00:00.000Z",
+  "dropoffAddress": "Hotel Sofitel Algiers",
+  "dropoffLat": 36.753,
+  "dropoffLng": 3.058,
+  "dropoffDeadline": "2026-03-08T10:00:00.000Z",
+  "priority": "urgent"
+}
+
+### Update Task
+PATCH {{baseUrl}}/dispatcher/tasks/{{taskId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "title": "Updated Airport pickup",
+  "priority": "normal"
+}
+
+### Cancel Task (Delete)
+DELETE {{baseUrl}}/dispatcher/tasks/{{taskId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Bulk Import Tasks from CSV
+# Note: This requires multipart/form-data, adjust as needed
+POST {{baseUrl}}/dispatcher/tasks/import
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Authorization: Bearer {{token}}
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="tasks.csv"
+Content-Type: text/csv
+
+title,pickupAddress,pickupLat,pickupLng,pickupWindowStart,pickupWindowEnd,dropoffAddress,dropoffLat,dropoffLng,dropoffDeadline
+Test Task,Test Address,36.691,3.215,2026-03-08T08:00:00.000Z,2026-03-08T09:00:00.000Z,Drop Address,36.753,3.058,2026-03-08T10:00:00.000Z
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+# ============================================
+# DRIVERS ENDPOINTS
+# ============================================
+
+### List Active Drivers
+GET {{baseUrl}}/dispatcher/drivers
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Create Driver
+# @name createDriver
+POST {{baseUrl}}/dispatcher/drivers
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "John Smith",
+  "email": "john.smith@example.com",
+  "phone": "+213555123456",
+  "vehicleType": "sedan",
+  "vehicleCapacity": 4
+}
+
+### Get Driver by ID
+@driverId = YOUR_DRIVER_ID_HERE
+GET {{baseUrl}}/dispatcher/drivers/{{driverId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Update Driver
+PATCH {{baseUrl}}/dispatcher/drivers/{{driverId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "John Smith Updated",
+  "phone": "+213555654321"
+}
+
+### Delete Driver (Soft Delete)
+DELETE {{baseUrl}}/dispatcher/drivers/{{driverId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+# ============================================
+# AVAILABILITY ENDPOINTS
+# ============================================
+
+### Get Driver Availability for a Date
+@availabilityDate = 2026-03-08
+GET {{baseUrl}}/dispatcher/availability?date={{availabilityDate}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Upsert Driver Availability
+PATCH {{baseUrl}}/dispatcher/availability/{{driverId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "date": "2026-03-08",
+  "startTime": "08:00",
+  "endTime": "18:00",
+  "isAvailable": true
+}
+
+# ============================================
+# PLANNING / OPTIMIZATION ENDPOINTS
+# ============================================
+
+### Start Optimization Job
+# @name startOptimization
+POST {{baseUrl}}/dispatcher/planning/optimize
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "date": "2026-03-08"
+}
+
+### Check Optimization Job Status
+@jobId = YOUR_JOB_ID_HERE
+GET {{baseUrl}}/dispatcher/planning/status/{{jobId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### List Plans
+GET {{baseUrl}}/dispatcher/planning/plans
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### List Plans with Filters
+GET {{baseUrl}}/dispatcher/planning/plans?date=2026-03-08&status=draft
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Get Plan Details
+@planId = YOUR_PLAN_ID_HERE
+GET {{baseUrl}}/dispatcher/planning/plans/{{planId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Publish Draft Plan
+POST {{baseUrl}}/dispatcher/planning/plans/{{planId}}/publish
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{}
+
+# ============================================
+# GEOCODE ENDPOINTS
+# ============================================
+
+### Geocode Search - Search for addresses
+@searchQuery = Algiers Airport
+GET {{baseUrl}}/geocode/search?query={{searchQuery}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### Geocode Search - More specific
+GET {{baseUrl}}/geocode/search?query=Hotel%20Sofitel%20Algiers
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+# ============================================
+# TEST WORKFLOW: Full Optimization Flow
+# ============================================
+# Run these in order:
+# 1. Login (use @login request above)
+# 2. Copy token from response to @token variable
+# 3. Create a few tasks
+# 4. Create/verify drivers exist
+# 5. Start optimization
+# 6. Poll status until completed (copy jobId to @jobId)
+# 7. Get plan details (copy planId to @planId)
+# 8. Publish plan
+
+# ============================================
+# ERROR TESTING
+# ============================================
+
+### Test Unauthorized - No token
+GET {{baseUrl}}/dispatcher/tasks
+Content-Type: {{contentType}}
+
+### Test Invalid Token
+GET {{baseUrl}}/dispatcher/tasks
+Content-Type: {{contentType}}
+Authorization: Bearer invalid_token_here
+
+### Test Validation Error - Missing required fields
+POST {{baseUrl}}/dispatcher/tasks
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "title": ""
+}
+
+### Test Not Found - Invalid Task ID
+GET {{baseUrl}}/dispatcher/tasks/00000000-0000-0000-0000-000000000000
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
