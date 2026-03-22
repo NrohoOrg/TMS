@@ -1,10 +1,6 @@
 packages:
-<<<<<<< Updated upstream
   - 'apps/*'
   - 'packages/*'
-=======
-  - apps/*
-  - packages/*
 
 ignoredBuiltDependencies:
   - '@nestjs/core'
@@ -15,4 +11,3 @@ ignoredBuiltDependencies:
   - prisma
   - sharp
   - unrs-resolver
->>>>>>> Stashed changes

@@ -3,15 +3,10 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-<<<<<<< Updated upstream
-    "deleteOutDir": true
-  }
-=======
     "deleteOutDir": true,
     "builder": "tsc",
     "assets": [],
     "watchAssets": false
   },
   "entryFile": "main"
->>>>>>> Stashed changes
 }

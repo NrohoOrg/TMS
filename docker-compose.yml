@@ -17,11 +17,8 @@ services:
 
   redis:
     image: redis:7-alpine
-<<<<<<< Updated upstream
-=======
     ports:
       - "6379:6379"
->>>>>>> Stashed changes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

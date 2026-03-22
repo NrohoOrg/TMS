@@ -15,5 +15,8 @@
   "devDependencies": {
     "@nx/nest": "22.5.3",
     "nx": "22.5.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.5.0"
   }
 }

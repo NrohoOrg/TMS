@@ -81,8 +81,6 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-<<<<<<< Updated upstream
-=======
         ...(process.env['NODE_ENV'] !== 'production' && {
           transport: {
             target: 'pino-pretty',
@@ -95,8 +93,8 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
             },
           },
         }),
->>>>>>> Stashed changes
-        genReqId: (req, res) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        genReqId: (req: any, res: any) => {
           const requestIdHeader = req.headers['x-request-id'];
           const requestId =
             typeof requestIdHeader === 'string'
@@ -108,7 +106,8 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
           res.setHeader('x-request-id', requestId);
           return requestId;
         },
-        customSuccessObject: (req, res, valueObject) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        customSuccessObject: (req: any, res: any, valueObject: any) => ({
           ...valueObject,
           requestId: req.id,
           duration:
@@ -116,7 +115,8 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
             (res as { responseTime?: number }).responseTime ??
             0,
         }),
-        customErrorObject: (req, res, _error, valueObject) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        customErrorObject: (req: any, res: any, _error: any, valueObject: any) => ({
           ...valueObject,
           requestId: req.id,
           duration:
