@@ -14,8 +14,10 @@
 @contentType = application/json
 
 # Variables (update after login)
-@token = YOUR_ACCESS_TOKEN_HERE
-@refreshToken = YOUR_REFRESH_TOKEN_HERE
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIwMmRjYjBlYS0xZTE1LTQ4ZDgtYWRjMC1hOTUxNWQ1OWMwNWUiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwicm9sZSI6IkFETUlOIiwidHlwZSI6ImFjY2VzcyIsImlhdCI6MTc3NDM1NDY2MSwiZXhwIjoxNzc0MzU1NTYxfQ.b1_owA7D-D08KvRW_y6E_mMw7mSbcE9ehI2OBSnn1WE
+@refreshToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NGM3MWJiOC03NzQ4LTRjNzUtYmI5Yi1kODI0MTk3NDEzZTYiLCJ0eXBlIjoicmVmcmVzaCIsImlhdCI6MTc3NDM1NDUxOSwiZXhwIjoxNzc0OTU5MzE5fQ.9ElZWjvxvfhuLAqRcZ6BMnBHJEOqxqF35yvQZOCTx30
+
+
 
 # ============================================
 # HEALTH CHECK (Not wrapped in envelope)
@@ -80,17 +82,17 @@ Content-Type: {{contentType}}
 # ============================================
 
 ### List Tasks (with pagination and filters)
-GET {{baseUrl}}/dispatcher/tasks?page=1&limit=10
+GET {{baseUrl}}/dispatcher/tasks?page=1&limit=20
 Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
 
 ### List Tasks with Status Filter
-GET {{baseUrl}}/dispatcher/tasks?status=pending&page=1&limit=10
+GET {{baseUrl}}/dispatcher/tasks?status=pending&page=1&limit=20
 Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
 
 ### Get Task by ID
-@taskId = YOUR_TASK_ID_HERE
+@taskId = 0be18675-8ae0-4124-9128-4d96fbbd9506
 GET {{baseUrl}}/dispatcher/tasks/{{taskId}}
 Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
@@ -214,6 +216,11 @@ Authorization: Bearer {{token}}
 # PLANNING / OPTIMIZATION ENDPOINTS
 # ============================================
 
+### Check Optimization Service Health
+GET {{baseUrl}}/optimizer/health
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
 ### Start Optimization Job
 # @name startOptimization
 POST {{baseUrl}}/dispatcher/planning/optimize
@@ -221,11 +228,11 @@ Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
 
 {
-  "date": "2026-03-08"
+  "date": "2026-03-15"
 }
 
 ### Check Optimization Job Status
-@jobId = YOUR_JOB_ID_HERE
+@jobId = c53df5cc-1c18-4b98-bd02-843db2d2f97f
 GET {{baseUrl}}/dispatcher/planning/status/{{jobId}}
 Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
@@ -241,7 +248,7 @@ Content-Type: {{contentType}}
 Authorization: Bearer {{token}}
 
 ### Get Plan Details
-@planId = YOUR_PLAN_ID_HERE
+@planId = c53df5cc-1c18-4b98-bd02-843db2d2f97f
 GET {{baseUrl}}/dispatcher/planning/plans/{{planId}}
 Content-Type: {{contentType}}
 Authorization: Bearer {{token}}

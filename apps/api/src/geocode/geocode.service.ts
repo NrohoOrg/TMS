@@ -49,7 +49,7 @@ export class GeocodeService {
     }
 
     await this.acquireRateLimitSlot();
-    const results = await this.fetchFromNominatim(normalizedQuery, limit);
+    const results = await this.fetchFromNominatim(normalizedQuery, limit, dto);
 
     await this.prisma.geocodeCache.upsert({
       where: { normalizedQuery },
@@ -87,18 +87,31 @@ export class GeocodeService {
     }
   }
 
-  private async fetchFromNominatim(query: string, limit: number): Promise<GeocodeSearchResult[]> {
+  private async fetchFromNominatim(query: string, limit: number, dto?: SearchGeocodeDto): Promise<GeocodeSearchResult[]> {
     const nominatimBaseUrl = (
       this.configService.get<string>('NOMINATIM_URL') ?? 'https://nominatim.openstreetmap.org'
     ).replace(/\/$/, '');
 
+    const params: Record<string, string | number> = {
+      q: query,
+      limit,
+      format: 'json',
+      addressdetails: 0,
+    };
+
+    // Add optional parameters for filtering
+    if (dto?.viewbox) {
+      params.viewbox = dto.viewbox;
+    }
+    if (dto?.bounded) {
+      params.bounded = dto.bounded;
+    }
+    if (dto?.countrycode) {
+      params.countrycode = dto.countrycode;
+    }
+
     const response = await axios.get<NominatimSearchResult[]>(`${nominatimBaseUrl}/search`, {
-      params: {
-        q: query,
-        limit,
-        format: 'json',
-        addressdetails: 0,
-      },
+      params,
       headers: {
         'User-Agent': 'dispatch-planner/1.0',
       },
