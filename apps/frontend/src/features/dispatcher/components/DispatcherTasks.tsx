@@ -53,6 +53,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import {
   useTasksList,
   useCreateTask,
@@ -95,13 +96,16 @@ function fmtTime(iso: string): string {
 }
 
 function toIso(date: string, time: string): string {
-  return new Date(`${date}T${time}`).toISOString();
+  // Create ISO string without timezone conversion issues
+  // date format: YYYY-MM-DD, time format: HH:MM
+  return `${date}T${time}:00.000Z`;
 }
 
 function isoToTime(iso: string): string {
   try {
     const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    // Use UTC getters to avoid timezone issues
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
   } catch {
     return "08:00";
   }
@@ -109,7 +113,12 @@ function isoToTime(iso: string): string {
 
 function isoToDate(iso: string): string {
   try {
-    return new Date(iso).toISOString().slice(0, 10);
+    const d = new Date(iso);
+    // Use UTC to avoid timezone offset issues
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const date = String(d.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${date}`;
   } catch {
     return new Date().toISOString().slice(0, 10);
   }
@@ -237,20 +246,28 @@ function TaskFormFields({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
           <Label>Pickup Address</Label>
-          <Input
-            required
-            placeholder="Enter pickup location"
+          <AddressAutocomplete
             value={form.pickupAddress}
-            onChange={(e) => onChange({ pickupAddress: e.target.value })}
+            onAddressChange={(address) =>
+              onChange({ pickupAddress: address })
+            }
+            onCoordinatesChange={(lat, lng) =>
+              onChange({ pickupLat: String(lat), pickupLng: String(lng) })
+            }
+            placeholder="Enter pickup location"
           />
         </div>
         <div className="space-y-2">
           <Label>Dropoff Address</Label>
-          <Input
-            required
-            placeholder="Enter dropoff location"
+          <AddressAutocomplete
             value={form.dropoffAddress}
-            onChange={(e) => onChange({ dropoffAddress: e.target.value })}
+            onAddressChange={(address) =>
+              onChange({ dropoffAddress: address })
+            }
+            onCoordinatesChange={(lat, lng) =>
+              onChange({ dropoffLat: String(lat), dropoffLng: String(lng) })
+            }
+            placeholder="Enter dropoff location"
           />
         </div>
         <div className="space-y-2">
