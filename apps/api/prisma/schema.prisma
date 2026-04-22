@@ -104,15 +104,18 @@ enum PlanStatus {
 }
 
 model Plan {
-  id          String     @id @default(uuid())
-  date        DateTime   @db.Date
-  status      PlanStatus @default(draft)
-  publishedAt DateTime?
-  createdAt   DateTime   @default(now())
-  createdById String
-  createdBy   User       @relation(fields: [createdById], references: [id])
-  routes      Route[]
-  jobs        OptimizationJob[]
+  id              String     @id @default(uuid())
+  date            DateTime   @db.Date
+  status          PlanStatus @default(draft)
+  publishedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  createdById     String
+  notes           String?
+  lastEditedAt    DateTime?
+  lastEditedById  String?
+  createdBy       User       @relation(fields: [createdById], references: [id])
+  routes          Route[]
+  jobs            OptimizationJob[]
 }
 
 model Route {
@@ -121,9 +124,11 @@ model Route {
   driverId        String
   totalDistanceM  Int     @default(0)
   totalTimeS      Int     @default(0)
-  plan            Plan    @relation(fields: [planId], references: [id])
+  plan            Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
   driver          Driver  @relation(fields: [driverId], references: [id])
   stops           Stop[]
+
+  @@unique([planId, driverId])
 }
 
 enum StopType {
@@ -139,20 +144,22 @@ enum StopStatus {
 }
 
 model Stop {
-  id             String      @id @default(uuid())
-  routeId        String
-  taskId         String
-  sequence       Int
-  type           StopType
-  etaS           Int
-  departureS     Int
-  actualArrivalS Int?
-  completedAt    DateTime?
-  notes          String?
-  status         StopStatus  @default(pending)
-  route          Route       @relation(fields: [routeId], references: [id])
-  task           Task        @relation(fields: [taskId], references: [id])
-  stopEvents     StopEvent[]
+  id                String      @id @default(uuid())
+  routeId           String
+  taskId            String
+  sequence          Int
+  type              StopType
+  etaS              Int
+  departureS        Int
+  actualArrivalS    Int?
+  completedAt       DateTime?
+  notes             String?
+  status            StopStatus  @default(pending)
+  locked            Boolean     @default(false)
+  manuallyAssigned  Boolean     @default(false)
+  route             Route       @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  task              Task        @relation(fields: [taskId], references: [id])
+  stopEvents        StopEvent[]
 }
 
 model StopEvent {

@@ -6,89 +6,499 @@ const prisma = new PrismaClient();
 async function main() {
   const hash = (password: string) => bcrypt.hash(password, 10);
 
-  await prisma.user.upsert({
-    where: { email: 'admin@example.com' },
-    update: {
-      name: 'Admin User',
-    },
-    create: {
+  // ── Clean existing data (order matters for FK constraints) ──
+  await prisma.stopEvent.deleteMany();
+  await prisma.stop.deleteMany();
+  await prisma.route.deleteMany();
+  await prisma.optimizationJob.deleteMany();
+  await prisma.plan.deleteMany();
+  await prisma.availability.deleteMany();
+  await prisma.task.deleteMany();
+  await prisma.driver.deleteMany();
+  await prisma.refreshToken.deleteMany();
+  await prisma.user.deleteMany();
+
+  // ── Users ──
+  const admin = await prisma.user.create({
+    data: {
       email: 'admin@example.com',
-      name: 'Admin User',
+      name: 'Karim Benali',
+      phone: '+213 555 0101',
       passwordHash: await hash('Admin1234!'),
       role: Role.ADMIN,
     },
   });
-  await prisma.user.upsert({
-    where: { email: 'dispatcher@example.com' },
-    update: {
-      name: 'Dispatcher User',
-    },
-    create: {
+
+  const dispatcher = await prisma.user.create({
+    data: {
       email: 'dispatcher@example.com',
-      name: 'Dispatcher User',
+      name: 'Amira Hadj',
+      phone: '+213 555 0102',
       passwordHash: await hash('Dispatch1234!'),
       role: Role.DISPATCHER,
     },
   });
 
-  if ((await prisma.driver.count()) === 0) {
-    const depotLat = 36.7372;
-    const depotLng = 3.0865;
-    await prisma.driver.createMany({
-      data: [
-        { name: 'Driver One', phone: '+213555000001', shiftStart: '08:00', shiftEnd: '17:00', depotLat, depotLng, active: true },
-        { name: 'Driver Two', phone: '+213555000002', shiftStart: '08:00', shiftEnd: '17:00', depotLat, depotLng, active: true },
-        { name: 'Driver Three', phone: '+213555000003', shiftStart: '08:00', shiftEnd: '17:00', depotLat, depotLng, active: true },
-      ],
-    });
+  console.log(`Created users: ${admin.name}, ${dispatcher.name}`);
+
+  // ── Drivers (real Algiers depots) ──
+  const driversData = [
+    {
+      name: 'Youcef Merah',
+      phone: '+213 555 0103',
+      shiftStart: '08:00',
+      shiftEnd: '17:00',
+      depotLat: 36.7538,
+      depotLng: 3.0588,
+      capacityUnits: 15,
+      active: true,
+    },
+    {
+      name: 'Rachid Bouzid',
+      phone: '+213 555 0105',
+      shiftStart: '07:00',
+      shiftEnd: '16:00',
+      depotLat: 36.4722,
+      depotLng: 2.8278,
+      capacityUnits: 10,
+      active: true,
+    },
+    {
+      name: 'Fatima Zahra',
+      phone: '+213 555 0106',
+      shiftStart: '08:00',
+      shiftEnd: '17:00',
+      depotLat: 36.7538,
+      depotLng: 3.0588,
+      capacityUnits: 12,
+      active: false, // on leave
+    },
+    {
+      name: 'Mohamed Ait',
+      phone: '+213 555 0107',
+      shiftStart: '06:00',
+      shiftEnd: '15:00',
+      depotLat: 36.7538,
+      depotLng: 3.0588,
+      capacityUnits: 20,
+      active: true,
+    },
+    {
+      name: 'Salim Tounsi',
+      phone: '+213 555 0108',
+      shiftStart: '08:00',
+      shiftEnd: '17:00',
+      depotLat: 36.7538,
+      depotLng: 3.0588,
+      capacityUnits: 15,
+      active: true,
+    },
+    {
+      name: 'Omar Khaldi',
+      phone: '+213 555 0109',
+      shiftStart: '07:30',
+      shiftEnd: '16:30',
+      depotLat: 36.7538,
+      depotLng: 3.0588,
+      capacityUnits: 8,
+      active: true,
+    },
+  ];
+
+  const drivers = await Promise.all(
+    driversData.map((d) => prisma.driver.create({ data: d })),
+  );
+  console.log(`Created ${drivers.length} drivers`);
+
+  // ── Today's date for tasks ──
+  const today = new Date();
+  const yyyy = today.getUTCFullYear();
+  const mm = today.getUTCMonth();
+  const dd = today.getUTCDate();
+
+  function todayAt(hours: number, minutes = 0): Date {
+    return new Date(Date.UTC(yyyy, mm, dd, hours, minutes, 0, 0));
   }
 
+  // ── Tasks: realistic Algiers deliveries & pickups ──
+  const tasksData = [
+    // URGENT
+    {
+      title: 'Medical Supplies to Mustapha Hospital',
+      pickupAddress: 'Pharmacy Central, Rue Didouche Mourad, Algiers',
+      pickupLat: 36.7631,
+      pickupLng: 3.0506,
+      pickupWindowStart: todayAt(6, 0),
+      pickupWindowEnd: todayAt(7, 0),
+      pickupServiceMinutes: 5,
+      dropoffAddress: 'CHU Mustapha Pacha, Place du 1er Mai, Algiers',
+      dropoffLat: 36.7590,
+      dropoffLng: 3.0590,
+      dropoffDeadline: todayAt(8, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.urgent,
+      status: TaskStatus.pending,
+      notes: 'Cold chain - handle with care',
+    },
+    {
+      title: 'VIP Airport Pickup',
+      pickupAddress: 'Houari Boumediene Airport, Terminal 1',
+      pickupLat: 36.6910,
+      pickupLng: 3.2153,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(9, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'Hotel Sofitel Algiers Hamma Garden',
+      dropoffLat: 36.7490,
+      dropoffLng: 3.0710,
+      dropoffDeadline: todayAt(10, 0),
+      dropoffServiceMinutes: 5,
+      priority: Priority.urgent,
+      status: TaskStatus.pending,
+      notes: 'Contact: M. Khalil +213 555 1001',
+    },
+    {
+      title: 'Emergency Lab Samples',
+      pickupAddress: 'Clinique El Azhar, Ben Aknoun',
+      pickupLat: 36.7580,
+      pickupLng: 3.0120,
+      pickupWindowStart: todayAt(7, 0),
+      pickupWindowEnd: todayAt(8, 0),
+      pickupServiceMinutes: 5,
+      dropoffAddress: 'Institut Pasteur Algerie, Rue du Docteur Laveran',
+      dropoffLat: 36.7648,
+      dropoffLng: 3.0535,
+      dropoffDeadline: todayAt(9, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.urgent,
+      status: TaskStatus.pending,
+      notes: 'Biohazard - special handling required',
+    },
+    // HIGH
+    {
+      title: 'Office Equipment to Hydra',
+      pickupAddress: 'Warehouse Zone Industrielle, Oued Smar',
+      pickupLat: 36.7100,
+      pickupLng: 3.1490,
+      pickupWindowStart: todayAt(9, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 15,
+      dropoffAddress: 'Client Office, Rue Ahmed Ghermoul, Hydra',
+      dropoffLat: 36.7450,
+      dropoffLng: 3.0370,
+      dropoffDeadline: todayAt(12, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.high,
+      status: TaskStatus.pending,
+      notes: 'Contact: Samira R. +213 555 1004',
+    },
+    {
+      title: 'Staff Transport to Training Center',
+      pickupAddress: 'Office Bab Ezzouar, Cite 8 Mai',
+      pickupLat: 36.7220,
+      pickupLng: 3.1820,
+      pickupWindowStart: todayAt(7, 30),
+      pickupWindowEnd: todayAt(8, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'INPED Training Center, Boumerdes',
+      dropoffLat: 36.7540,
+      dropoffLng: 3.4710,
+      dropoffDeadline: todayAt(9, 30),
+      dropoffServiceMinutes: 5,
+      priority: Priority.high,
+      status: TaskStatus.pending,
+      notes: '8 employees - HR Dept',
+    },
+    {
+      title: 'Restaurant Supply Run',
+      pickupAddress: 'Marche de Gros, Semmar, Algiers',
+      pickupLat: 36.7150,
+      pickupLng: 3.1100,
+      pickupWindowStart: todayAt(6, 0),
+      pickupWindowEnd: todayAt(8, 0),
+      pickupServiceMinutes: 20,
+      dropoffAddress: 'Restaurant El Djenina, Rue Larbi Ben Mhidi',
+      dropoffLat: 36.7710,
+      dropoffLng: 3.0600,
+      dropoffDeadline: todayAt(10, 0),
+      dropoffServiceMinutes: 15,
+      priority: Priority.high,
+      status: TaskStatus.pending,
+      notes: 'Fresh produce - perishable',
+    },
+    {
+      title: 'Bank Document Delivery',
+      pickupAddress: 'BNA Head Office, Rue Hassiba Ben Bouali',
+      pickupLat: 36.7530,
+      pickupLng: 3.0560,
+      pickupWindowStart: todayAt(9, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'BNA Branch, El Biar',
+      dropoffLat: 36.7680,
+      dropoffLng: 3.0350,
+      dropoffDeadline: todayAt(11, 0),
+      dropoffServiceMinutes: 5,
+      priority: Priority.high,
+      status: TaskStatus.pending,
+      notes: 'Confidential - signature required',
+    },
+    // NORMAL
+    {
+      title: 'Furniture Delivery to Bab El Oued',
+      pickupAddress: 'Ikea Showroom, Mohammadia Mall',
+      pickupLat: 36.7160,
+      pickupLng: 3.1180,
+      pickupWindowStart: todayAt(9, 0),
+      pickupWindowEnd: todayAt(12, 0),
+      pickupServiceMinutes: 20,
+      dropoffAddress: 'Residence Bab El Oued, Rue de la Liberte',
+      dropoffLat: 36.7870,
+      dropoffLng: 3.0470,
+      dropoffDeadline: todayAt(15, 0),
+      dropoffServiceMinutes: 30,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+      notes: 'Heavy items - 2 person lift needed',
+    },
+    {
+      title: 'Electronics to Kouba Store',
+      pickupAddress: 'Warehouse B, Zone Industrielle Rouiba',
+      pickupLat: 36.7340,
+      pickupLng: 3.2830,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(11, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'TechnoStore, Avenue Mohamed V, Kouba',
+      dropoffLat: 36.7270,
+      dropoffLng: 3.0560,
+      dropoffDeadline: todayAt(14, 0),
+      dropoffServiceMinutes: 15,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'Port Container Pickup',
+      pickupAddress: 'Port dAlger, Mole J4',
+      pickupLat: 36.7720,
+      pickupLng: 3.0660,
+      pickupWindowStart: todayAt(10, 0),
+      pickupWindowEnd: todayAt(11, 0),
+      pickupServiceMinutes: 30,
+      dropoffAddress: 'Entrepot Blida, Zone Industrielle',
+      dropoffLat: 36.4700,
+      dropoffLng: 2.8280,
+      dropoffDeadline: todayAt(14, 0),
+      dropoffServiceMinutes: 20,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+      notes: 'Container #ALG-4521 - customs cleared',
+    },
+    {
+      title: 'Catering to Conference Hall',
+      pickupAddress: 'Traiteur El Baraka, Bir Mourad Rais',
+      pickupLat: 36.7340,
+      pickupLng: 3.0510,
+      pickupWindowStart: todayAt(10, 0),
+      pickupWindowEnd: todayAt(11, 0),
+      pickupServiceMinutes: 15,
+      dropoffAddress: 'Palais des Congres, Club des Pins',
+      dropoffLat: 36.7550,
+      dropoffLng: 2.9450,
+      dropoffDeadline: todayAt(12, 0),
+      dropoffServiceMinutes: 20,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+      notes: '50 person lunch - keep warm',
+    },
+    {
+      title: 'Construction Materials',
+      pickupAddress: 'Cimenterie de Rais Hamidou',
+      pickupLat: 36.7700,
+      pickupLng: 3.0200,
+      pickupWindowStart: todayAt(7, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 25,
+      dropoffAddress: 'Chantier Dely Ibrahim',
+      dropoffLat: 36.7520,
+      dropoffLng: 3.0040,
+      dropoffDeadline: todayAt(13, 0),
+      dropoffServiceMinutes: 20,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'Textile Shipment',
+      pickupAddress: 'Atelier Textile, Hussein Dey',
+      pickupLat: 36.7370,
+      pickupLng: 3.0970,
+      pickupWindowStart: todayAt(9, 0),
+      pickupWindowEnd: todayAt(12, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'Boutique Mode, Rue Ben Mhidi, Centre',
+      dropoffLat: 36.7700,
+      dropoffLng: 3.0580,
+      dropoffDeadline: todayAt(14, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'School Supplies Delivery',
+      pickupAddress: 'Papeterie Centrale, Belouizdad',
+      pickupLat: 36.7470,
+      pickupLng: 3.0680,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'Ecole Primaire Chevalley, El Biar',
+      dropoffLat: 36.7630,
+      dropoffLng: 3.0290,
+      dropoffDeadline: todayAt(11, 30),
+      dropoffServiceMinutes: 10,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'Water Delivery',
+      pickupAddress: 'Depot Ifri, Rouiba',
+      pickupLat: 36.7290,
+      pickupLng: 3.2760,
+      pickupWindowStart: todayAt(7, 0),
+      pickupWindowEnd: todayAt(11, 0),
+      pickupServiceMinutes: 15,
+      dropoffAddress: 'Hotel Hilton, Pins Maritimes',
+      dropoffLat: 36.7530,
+      dropoffLng: 2.9730,
+      dropoffDeadline: todayAt(14, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+      notes: '200 bottles - use freight elevator',
+    },
+    {
+      title: 'Auto Parts Transfer',
+      pickupAddress: 'Renault Algerie, Zone Oued Smar',
+      pickupLat: 36.7050,
+      pickupLng: 3.1550,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 15,
+      dropoffAddress: 'Garage Bouzid, Rue de Tripoli, Hydra',
+      dropoffLat: 36.7430,
+      dropoffLng: 3.0340,
+      dropoffDeadline: todayAt(12, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'Flower Delivery for Event',
+      pickupAddress: 'Jardinerie Sahel, Ain Taya',
+      pickupLat: 36.7930,
+      pickupLng: 3.2870,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(10, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'Salle des Fetes, Cheraga',
+      dropoffLat: 36.7650,
+      dropoffLng: 2.9610,
+      dropoffDeadline: todayAt(13, 0),
+      dropoffServiceMinutes: 15,
+      priority: Priority.normal,
+      status: TaskStatus.pending,
+      notes: 'Fragile - keep upright',
+    },
+    // LOW
+    {
+      title: 'Archive Boxes to Storage',
+      pickupAddress: 'Sonatrach HQ, Djenane El Malik, Hydra',
+      pickupLat: 36.7390,
+      pickupLng: 3.0370,
+      pickupWindowStart: todayAt(8, 0),
+      pickupWindowEnd: todayAt(15, 0),
+      pickupServiceMinutes: 20,
+      dropoffAddress: 'Self Storage Algiers, Birkhadem',
+      dropoffLat: 36.7180,
+      dropoffLng: 3.0540,
+      dropoffDeadline: todayAt(17, 0),
+      dropoffServiceMinutes: 15,
+      priority: Priority.low,
+      status: TaskStatus.pending,
+      notes: '12 archive boxes',
+    },
+    {
+      title: 'Return Empty Pallets',
+      pickupAddress: 'Supermarche Uno, Bab Ezzouar',
+      pickupLat: 36.7200,
+      pickupLng: 3.1860,
+      pickupWindowStart: todayAt(10, 0),
+      pickupWindowEnd: todayAt(15, 0),
+      pickupServiceMinutes: 15,
+      dropoffAddress: 'Centre Logistique, Dar El Beida',
+      dropoffLat: 36.7140,
+      dropoffLng: 3.2200,
+      dropoffDeadline: todayAt(17, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.low,
+      status: TaskStatus.pending,
+    },
+    {
+      title: 'Office Recycling Pickup',
+      pickupAddress: 'Tour Business Center, Mohammadia',
+      pickupLat: 36.7130,
+      pickupLng: 3.1130,
+      pickupWindowStart: todayAt(11, 0),
+      pickupWindowEnd: todayAt(16, 0),
+      pickupServiceMinutes: 10,
+      dropoffAddress: 'Centre de Tri, Baraki',
+      dropoffLat: 36.6670,
+      dropoffLng: 3.0960,
+      dropoffDeadline: todayAt(17, 0),
+      dropoffServiceMinutes: 10,
+      priority: Priority.low,
+      status: TaskStatus.pending,
+    },
+  ];
+
+  const tasks = await Promise.all(
+    tasksData.map((t) => prisma.task.create({ data: t })),
+  );
+  console.log(`Created ${tasks.length} tasks`);
+
+  // ── Availability: all active drivers available today ──
+  const todayDate = new Date(Date.UTC(yyyy, mm, dd));
+  for (const driver of drivers) {
+    if (driver.active) {
+      await prisma.availability.create({
+        data: {
+          driverId: driver.id,
+          date: todayDate,
+          available: true,
+        },
+      });
+    }
+  }
+  console.log('Created availability records for today');
+
+  // ── Config ──
   await prisma.config.upsert({
     where: { id: 1 },
-    update: {},
+    update: {
+      maxSolveSeconds: 30,
+      speedKmh: 35,
+      objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
+    },
     create: {
       id: 1,
       maxSolveSeconds: 30,
-      speedKmh: 40,
+      speedKmh: 35,
       objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
     },
   });
+  console.log('Config updated');
 
-  if ((await prisma.task.count()) === 0) {
-    const baseDate = new Date('2026-01-15T00:00:00.000Z');
-    const priorities = [Priority.low, Priority.normal, Priority.normal, Priority.high, Priority.urgent] as const;
-    const tasks = Array.from({ length: 10 }, (_, i) => {
-      const pickupLat = 36.6972 + i * 0.009;
-      const pickupLng = 3.0465 + (i % 5) * 0.014;
-      const dropoffLat = 36.7122 + (i % 4) * 0.011;
-      const dropoffLng = 3.0615 + i * 0.008;
-      const start = new Date(baseDate);
-      start.setHours(8 + i % 6, 0, 0, 0);
-      const end = new Date(start);
-      end.setHours(start.getHours() + 2, 0, 0, 0);
-      const deadline = new Date(end);
-      deadline.setHours(deadline.getHours() + 1, 0, 0, 0);
-      return {
-        title: `Task ${i + 1}`,
-        pickupAddress: `Pickup ${i + 1}, Algiers`,
-        pickupLat,
-        pickupLng,
-        pickupWindowStart: start,
-        pickupWindowEnd: end,
-        pickupServiceMinutes: 0,
-        dropoffAddress: `Dropoff ${i + 1}, Algiers`,
-        dropoffLat,
-        dropoffLng,
-        dropoffDeadline: deadline,
-        dropoffServiceMinutes: 0,
-        priority: priorities[i % priorities.length],
-        status: TaskStatus.pending,
-        notes: null,
-      };
-    });
-    await prisma.task.createMany({ data: tasks });
-  }
-
+  // ── Geocode cache ──
   await prisma.geocodeCache.upsert({
     where: { normalizedQuery: 'algiers' },
     update: {
@@ -119,6 +529,19 @@ async function main() {
       expiresAt: new Date('2099-01-01T00:00:00.000Z'),
     },
   });
+
+  console.log('\n=== Seed Summary ===');
+  console.log(`Users:   2 (admin + dispatcher)`);
+  console.log(`Drivers: ${drivers.length} (${drivers.filter(d => d.active).length} active)`);
+  console.log(`Tasks:   ${tasks.length} for today (${todayDate.toISOString().slice(0, 10)})`);
+  console.log(`  urgent: ${tasksData.filter(t => t.priority === Priority.urgent).length}`);
+  console.log(`  high:   ${tasksData.filter(t => t.priority === Priority.high).length}`);
+  console.log(`  normal: ${tasksData.filter(t => t.priority === Priority.normal).length}`);
+  console.log(`  low:    ${tasksData.filter(t => t.priority === Priority.low).length}`);
+  console.log(`\nCredentials:`);
+  console.log(`  Admin:      admin@example.com / Admin1234!`);
+  console.log(`  Dispatcher: dispatcher@example.com / Dispatch1234!`);
+  console.log(`\nOptimize for date: ${todayDate.toISOString().slice(0, 10)}`);
 }
 
 main()

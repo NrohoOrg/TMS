@@ -1,5 +1,5 @@
-import AdminAudit from "@/features/admin/components/AdminAudit";
+import { redirect } from "next/navigation";
 
 export default function AdminAuditRoute() {
-  return <AdminAudit />;
+  redirect("/admin");
 }

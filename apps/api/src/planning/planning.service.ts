@@ -84,6 +84,7 @@ export type PlanDetailsResponse = {
   routes: Array<{
     driverId: string;
     driverName: string;
+    routeId: string;
     totalDistanceKm: number;
     totalTimeMinutes: number;
     stops: Array<{
@@ -94,11 +95,17 @@ export type PlanDetailsResponse = {
       etaSeconds: number;
       departureSeconds: number;
       status: string;
+      locked: boolean;
+      manuallyAssigned: boolean;
       task: {
         title: string;
         pickupAddress: string;
         dropoffAddress: string;
         priority: string;
+        pickupLat: number;
+        pickupLng: number;
+        dropoffLat: number;
+        dropoffLng: number;
       };
     }>;
   }>;
@@ -107,6 +114,10 @@ export type PlanDetailsResponse = {
     title: string;
     pickupAddress: string;
     dropoffAddress: string;
+    pickupLat: number;
+    pickupLng: number;
+    dropoffLat: number;
+    dropoffLng: number;
     priority: string;
     reason: string;
   }>;
@@ -388,7 +399,11 @@ export class PlanningService {
                   select: {
                     title: true,
                     pickupAddress: true,
+                    pickupLat: true,
+                    pickupLng: true,
                     dropoffAddress: true,
+                    dropoffLat: true,
+                    dropoffLng: true,
                     priority: true,
                   },
                 },
@@ -418,7 +433,11 @@ export class PlanningService {
             id: true,
             title: true,
             pickupAddress: true,
+            pickupLat: true,
+            pickupLng: true,
             dropoffAddress: true,
+            dropoffLat: true,
+            dropoffLng: true,
             priority: true,
           },
         })
@@ -432,6 +451,7 @@ export class PlanningService {
       routes: plan.routes.map((route) => ({
         driverId: route.driverId,
         driverName: route.driver.name,
+        routeId: route.id,
         totalDistanceKm: Number((route.totalDistanceM / 1000).toFixed(2)),
         totalTimeMinutes: Number((route.totalTimeS / 60).toFixed(1)),
         stops: route.stops.map((stop) => ({
@@ -442,10 +462,16 @@ export class PlanningService {
           etaSeconds: stop.etaS,
           departureSeconds: stop.departureS,
           status: stop.status,
+          locked: stop.locked,
+          manuallyAssigned: stop.manuallyAssigned,
           task: {
             title: stop.task.title,
             pickupAddress: stop.task.pickupAddress,
+            pickupLat: stop.task.pickupLat,
+            pickupLng: stop.task.pickupLng,
             dropoffAddress: stop.task.dropoffAddress,
+            dropoffLat: stop.task.dropoffLat,
+            dropoffLng: stop.task.dropoffLng,
             priority: stop.task.priority,
           },
         })),
@@ -457,6 +483,10 @@ export class PlanningService {
           title: task?.title ?? '',
           pickupAddress: task?.pickupAddress ?? '',
           dropoffAddress: task?.dropoffAddress ?? '',
+          pickupLat: task?.pickupLat ?? 0,
+          pickupLng: task?.pickupLng ?? 0,
+          dropoffLat: task?.dropoffLat ?? 0,
+          dropoffLng: task?.dropoffLng ?? 0,
           priority: task?.priority ?? 'normal',
           reason: entry.reason,
         };
