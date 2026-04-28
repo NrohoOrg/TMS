@@ -1,0 +1,118 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha_short: ${{ steps.meta.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: meta
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-api:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push optimizer
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/optimizer
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-optimizer:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-optimizer:latest
+          cache-from: type=gha,scope=optimizer
+          cache-to: type=gha,mode=max,scope=optimizer
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/frontend/Dockerfile
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-web:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    name: Deploy to server
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Copy deploy artifacts to server
+        run: |
+          scp -i ~/.ssh/id_ed25519 \
+            docker-compose.prod.yml \
+            deploy/scripts/deploy.sh \
+            deploy/nginx/tms.nroho.dz-https.conf \
+            deploy/nginx/api.tms.nroho.dz-https.conf \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/tms/staging/
+
+      - name: Run remote deploy
+        env:
+          SHA: ${{ needs.build.outputs.sha_short }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "GHCR_OWNER=${{ env.IMAGE_NAMESPACE }} \
+             SHA=${SHA} \
+             GITHUB_TOKEN=${{ secrets.GHCR_PULL_TOKEN }} \
+             GITHUB_ACTOR=${{ github.actor }} \
+             bash /opt/tms/staging/deploy.sh"
+
+      - name: Smoke test
+        run: |
+          sleep 5
+          curl -fsS https://api.tms.nroho.dz/health || exit 1
+          curl -fsS -o /dev/null -w "%{http_code}" https://tms.nroho.dz/ | grep -E "^(200|301|302)$" || exit 1
+          echo "Deploy successful"
