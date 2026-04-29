@@ -54,7 +54,7 @@ export default function AdminUsers() {
     name: "",
     phone: "",
     password: "",
-    role: "DISPATCHER" as "ADMIN" | "DISPATCHER",
+    role: "DISPATCHER" as "ADMIN" | "DISPATCHER" | "CADRE",
   });
 
   const usersQuery = useAdminUsers();
@@ -182,7 +182,7 @@ export default function AdminUsers() {
                   <Label>{tFn("admin.users.selectRole")}</Label>
                   <Select
                     value={form.role}
-                    onValueChange={(v) => setForm({ ...form, role: v as "ADMIN" | "DISPATCHER" })}
+                    onValueChange={(v) => setForm({ ...form, role: v as "ADMIN" | "DISPATCHER" | "CADRE" })}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -190,6 +190,7 @@ export default function AdminUsers() {
                     <SelectContent>
                       <SelectItem value="ADMIN">{tFn("roles.admin")}</SelectItem>
                       <SelectItem value="DISPATCHER">{tFn("roles.dispatcher")}</SelectItem>
+                      <SelectItem value="CADRE">{tFn("roles.cadre")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -257,6 +258,7 @@ export default function AdminUsers() {
                         <SelectContent>
                           <SelectItem value="ADMIN">{tFn("roles.admin")}</SelectItem>
                           <SelectItem value="DISPATCHER">{tFn("roles.dispatcher")}</SelectItem>
+                          <SelectItem value="CADRE">{tFn("roles.cadre")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>

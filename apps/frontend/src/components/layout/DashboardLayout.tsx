@@ -37,7 +37,6 @@ interface NavItem {
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   admin: [
     { labelKey: "nav.dashboard", path: "/admin", icon: LayoutDashboard },
-    { labelKey: "nav.liveMap", path: "/admin/map", icon: MapIcon },
     { labelKey: "nav.users", path: "/admin/users", icon: Users },
     { labelKey: "nav.drivers", path: "/admin/drivers", icon: UserCheck },
     { labelKey: "nav.systemHealth", path: "/admin/health", icon: Activity },
@@ -194,7 +193,7 @@ const Logo = () => (
     className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
   >
     <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
-      <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+      <Image src="/Nroho_Logo.png" alt="Nroho Logo" width={28} height={28} />
     </div>
     <motion.span
       initial={{ opacity: 0 }}
@@ -212,7 +211,7 @@ const LogoIcon = () => (
     className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
   >
     <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
-      <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+      <Image src="/Nroho_Logo.png" alt="Nroho Logo" width={28} height={28} />
     </div>
   </Link>
 );

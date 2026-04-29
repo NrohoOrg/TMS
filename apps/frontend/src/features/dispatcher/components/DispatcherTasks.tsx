@@ -34,14 +34,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertTriangle,
   Plus,
   Search,
   ArrowDown,
   ArrowUp,
   Check,
+  CheckCircle2,
   LayoutList,
   Loader2,
   Map as MapIcon,
+  RefreshCw,
   Sparkles,
   Trash2,
   Pencil,
@@ -59,9 +62,11 @@ import {
   useDrivers,
   useJobStatus,
   useRejectTask,
+  useRunMidDayReoptimization,
   useTasks,
   useTriggerOptimize,
 } from "@/features/shared/hooks";
+import type { MidDayResult } from "@/lib/api-services";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import type { Task } from "@/types/api";
@@ -130,9 +135,15 @@ export default function DispatcherTasks() {
   const deleteTask = useDeleteTask();
   const approveTask = useApproveTask();
   const rejectTask = useRejectTask();
+  const runMidDay = useRunMidDayReoptimization();
   const driversQuery = useDrivers();
   const triggerOptimize = useTriggerOptimize();
   const jobStatusQuery = useJobStatus(activeJobId);
+
+  // Smart prompt after approval: if a published plan exists for the approved
+  // task's date, show a preview of how it would be inserted via mid-day
+  // re-optimization. Dispatcher can apply or dismiss without leaving the page.
+  const [reoptPreview, setReoptPreview] = useState<MidDayResult | null>(null);
 
   const activeDrivers = (driversQuery.data ?? []).filter((d) => d.active);
 
@@ -204,6 +215,42 @@ export default function DispatcherTasks() {
     } catch (err) {
       toast({
         title: "Approve failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Smart prompt: if a published plan exists for this task's date, the
+    // mid-day re-optimizer will surface where the new task could slot in.
+    // No published plan → empty assignments → dialog stays closed.
+    try {
+      const taskDate = task.pickupWindowStart.slice(0, 10);
+      const preview = await runMidDay.mutateAsync({ date: taskDate, dryRun: true });
+      if (preview.assignments.length > 0) {
+        setReoptPreview(preview);
+      }
+    } catch {
+      // Preview is best-effort. If it errors, just stay silent — the task is
+      // already approved and will be picked up by the next run.
+    }
+  }
+
+  async function handleApplyReopt() {
+    if (!reoptPreview) return;
+    try {
+      const applied = await runMidDay.mutateAsync({
+        date: reoptPreview.date,
+        dryRun: false,
+      });
+      setReoptPreview(null);
+      toast({
+        title: "Plan updated",
+        description: `${applied.assignedCount} task(s) inserted.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not update plan",
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
@@ -441,7 +488,7 @@ export default function DispatcherTasks() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("common.all")} {t("common.status")}</SelectItem>
+                  <SelectItem value="all">{t("dispatcher.tasks.allStatuses")}</SelectItem>
                   {["pending", "assigned", "cancelled"].map((s) => (
                     <SelectItem key={s} value={s} className="capitalize">
                       {t(`status.${s}`)}
@@ -454,7 +501,7 @@ export default function DispatcherTasks() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("common.all")} {t("common.priority")}</SelectItem>
+                  <SelectItem value="all">{t("dispatcher.tasks.allPriorities")}</SelectItem>
                   {["urgent", "normal"].map((p) => (
                     <SelectItem key={p} value={p} className="capitalize">
                       {t(`priority.${p}`)}
@@ -675,6 +722,89 @@ export default function DispatcherTasks() {
                 <Sparkles className="w-4 h-4 me-2" />
               )}
               {activeJobId ? t("dispatcher.tasks.optimizing") : t("dispatcher.tasks.queueOptimization")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Smart prompt: mid-day re-optimization preview shown right after a
+          Cadre task is approved if a published plan exists for that date. */}
+      <Dialog
+        open={!!reoptPreview}
+        onOpenChange={(o) => {
+          if (!o && !runMidDay.isPending) setReoptPreview(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-amber-700" />
+              Insert into today&apos;s plan?
+            </DialogTitle>
+          </DialogHeader>
+
+          {reoptPreview && (
+            <div className="space-y-3 py-1">
+              <p className="text-xs text-muted-foreground">
+                A published plan already exists for{" "}
+                <span className="font-medium text-foreground">
+                  {reoptPreview.date}
+                </span>
+                . The newly approved task can be slotted in now. Review and
+                apply, or dismiss to leave today&apos;s plan untouched.
+              </p>
+
+              <div className="rounded-md border border-border bg-background p-2.5">
+                <ul className="space-y-1 max-h-60 overflow-y-auto">
+                  {reoptPreview.assignments.map((a) => (
+                    <li
+                      key={a.taskId}
+                      className="text-[11px] flex items-center gap-2 min-w-0"
+                    >
+                      <CheckCircle2 className="h-3 w-3 text-tms-success flex-shrink-0" />
+                      <span className="font-medium text-foreground truncate">
+                        {a.taskTitle}
+                      </span>
+                      <span className="text-muted-foreground flex-shrink-0">→</span>
+                      <span className="text-foreground truncate">{a.driverName}</span>
+                      <span className="ms-auto text-[9px] font-mono text-muted-foreground flex-shrink-0">
+                        #{a.pickupSequence}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {reoptPreview.unassigned.length > 0 && (
+                <div className="rounded-md border border-tms-warning/30 bg-background p-2.5">
+                  <p className="text-[11px] text-tms-warning-dark flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                    {reoptPreview.unassigned.length} couldn&apos;t fit.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setReoptPreview(null)}
+              disabled={runMidDay.isPending}
+            >
+              Dismiss
+            </Button>
+            <Button
+              onClick={handleApplyReopt}
+              disabled={runMidDay.isPending}
+              className="bg-tms-success hover:bg-tms-success-dark"
+            >
+              {runMidDay.isPending ? (
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 me-2" />
+              )}
+              Approve &amp; apply
             </Button>
           </DialogFooter>
         </DialogContent>

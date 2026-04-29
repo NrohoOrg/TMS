@@ -82,6 +82,10 @@ export class TasksService {
       where.status = query.status;
     }
 
+    if (query.priority) {
+      where.priority = query.priority;
+    }
+
     const pickupWindowStartFilter: Prisma.DateTimeFilter = {};
     if (query.dateFrom) {
       pickupWindowStartFilter.gte = this.toDateStart(query.dateFrom);

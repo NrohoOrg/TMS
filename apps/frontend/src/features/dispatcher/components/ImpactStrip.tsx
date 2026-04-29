@@ -65,13 +65,6 @@ export function ImpactStrip({ date }: Props) {
             {t("dispatcher.impact.title")}{" "}
             <span className="text-muted-foreground font-normal">· {dateLabel}</span>
           </h3>
-          {data.savingsPercent > 0 && (
-            <span className="text-[11px] text-muted-foreground">
-              {t("dispatcher.impact.savingsHint", {
-                percent: data.savingsPercent.toFixed(1),
-              })}
-            </span>
-          )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
           <Tile

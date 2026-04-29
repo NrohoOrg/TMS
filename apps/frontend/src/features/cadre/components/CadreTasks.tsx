@@ -33,6 +33,7 @@ import {
   useMyCadreTasks,
 } from "@/features/shared/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { TaskFormDrawer } from "@/features/dispatcher/components/TaskFormDrawer";
 import type { CadreDisplayStatus, CadreTaskView, Task } from "@/types/api";
 
@@ -40,13 +41,13 @@ interface Props {
   initialOpenForm?: boolean;
 }
 
-const STATUS_LABELS: Record<CadreDisplayStatus, string> = {
-  created: "Created",
-  approved: "Approved",
-  rejected: "Rejected",
-  assigned: "Assigned",
-  started: "Started",
-  completed: "Completed",
+const STATUS_KEYS: Record<CadreDisplayStatus, string> = {
+  created: "cadre.status.created",
+  approved: "cadre.status.approved",
+  rejected: "cadre.status.rejected",
+  assigned: "cadre.status.assigned",
+  started: "cadre.status.started",
+  completed: "cadre.status.completed",
 };
 
 const STATUS_STYLES: Record<CadreDisplayStatus, string> = {
@@ -78,6 +79,7 @@ function formatTime(iso: string) {
 
 export default function CadreTasks({ initialOpenForm = false }: Props) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const tasksQuery = useMyCadreTasks();
   const deleteCadre = useDeleteCadreTask();
   const [drawerOpen, setDrawerOpen] = useState(initialOpenForm);
@@ -98,19 +100,22 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
     return t.approvalStatus !== "approved";
   }
 
-  async function handleDelete(t: CadreTaskView) {
-    if (!canEdit(t)) {
-      toast({ title: "Cannot delete an approved task", variant: "destructive" });
+  async function handleDelete(item: CadreTaskView) {
+    if (!canEdit(item)) {
+      toast({
+        title: t("cadre.cannotDeleteApproved"),
+        variant: "destructive",
+      });
       return;
     }
-    if (!confirm(`Delete "${t.title}"?`)) return;
+    if (!confirm(t("cadre.confirmDelete", { title: item.title }))) return;
     try {
-      await deleteCadre.mutateAsync(t.id);
-      toast({ title: "Task deleted" });
+      await deleteCadre.mutateAsync(item.id);
+      toast({ title: t("cadre.taskDeleted") });
     } catch (err) {
       toast({
-        title: "Delete failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.deleteFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -119,8 +124,8 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title="My Tasks"
-        subtitle={`${tasks.length} task${tasks.length === 1 ? "" : "s"} submitted`}
+        title={t("cadre.title")}
+        subtitle={t("cadre.subtitle", { count: tasks.length })}
         actions={
           <Button
             size="sm"
@@ -129,7 +134,7 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
               setDrawerOpen(true);
             }}
           >
-            <Plus className="w-4 h-4 me-2" /> Add Task
+            <Plus className="w-4 h-4 me-2" /> {t("cadre.addTask")}
           </Button>
         }
       />
@@ -137,8 +142,7 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
       <Card>
         <CardHeader className="pb-3">
           <p className="text-xs text-muted-foreground">
-            Tasks you submit are sent to the dispatcher for approval. Once approved
-            you can no longer edit or delete them.
+            {t("cadre.intro")}
           </p>
         </CardHeader>
         <CardContent className="p-0">
@@ -152,7 +156,7 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
                 message={
                   tasksQuery.error instanceof Error
                     ? tasksQuery.error.message
-                    : "Failed to load tasks"
+                    : t("cadre.loadFailed")
                 }
                 onRetry={() => tasksQuery.refetch()}
               />
@@ -161,19 +165,19 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
             <div className="p-6">
               <EmptyState
                 icon={ClipboardList}
-                title="No tasks yet"
-                description="Add your first task — it will be sent to the dispatcher for approval."
+                title={t("cadre.empty.title")}
+                description={t("cadre.empty.description")}
               />
             </div>
           ) : (
             <Table className="[&_th]:border-e [&_th]:border-border [&_th:last-child]:border-e-0 [&_td]:border-e [&_td]:border-border [&_td:last-child]:border-e-0">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Pickup / Dropoff</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24">Actions</TableHead>
+                  <TableHead>{t("cadre.table.title")}</TableHead>
+                  <TableHead>{t("cadre.table.pickupDropoff")}</TableHead>
+                  <TableHead>{t("common.time")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                  <TableHead className="w-24">{t("common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -181,10 +185,10 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
                   const Icon = STATUS_ICONS[task.displayStatus];
                   const statusLabel =
                     task.displayStatus === "assigned" && task.assignedDriverName
-                      ? `Assigned to ${task.assignedDriverName}`
+                      ? t("cadre.assignedTo", { name: task.assignedDriverName })
                       : task.displayStatus === "started" && task.assignedDriverName
-                        ? `Started — ${task.assignedDriverName}`
-                        : STATUS_LABELS[task.displayStatus];
+                        ? t("cadre.startedBy", { name: task.assignedDriverName })
+                        : t(STATUS_KEYS[task.displayStatus]);
                   const editable = canEdit(task);
                   return (
                     <TableRow key={task.id}>
@@ -221,7 +225,7 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
                               setEditing(task);
                               setDrawerOpen(true);
                             }}
-                            title={editable ? "Edit" : "Approved tasks cannot be edited"}
+                            title={editable ? t("common.edit") : t("cadre.cannotEditApproved")}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -231,7 +235,7 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
                             className="h-7 w-7 p-0 text-muted-foreground hover:text-tms-error"
                             disabled={!editable}
                             onClick={() => handleDelete(task)}
-                            title={editable ? "Delete" : "Approved tasks cannot be deleted"}
+                            title={editable ? t("common.delete") : t("cadre.cannotDeleteApproved")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>

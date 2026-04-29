@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { TaskStatus } from '@prisma/client';
+import { Priority, TaskStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
@@ -10,6 +10,11 @@ export class ListTasksDto {
   @IsOptional()
   @IsEnum(TaskStatus)
   status?: TaskStatus;
+
+  @ApiPropertyOptional({ enum: Priority })
+  @IsOptional()
+  @IsEnum(Priority)
+  priority?: Priority;
 
   @ApiPropertyOptional({ example: '2026-03-04' })
   @IsOptional()

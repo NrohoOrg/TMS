@@ -54,13 +54,37 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "";
       const lowered = raw.toLowerCase();
-      const friendly =
+      let friendly: string;
+      if (
         lowered.includes("401") ||
         lowered.includes("invalid") ||
         lowered.includes("unauthorized") ||
-        lowered.includes("credentials")
-          ? t("auth.invalidCredentials")
-          : raw || t("auth.loginFailed");
+        lowered.includes("credentials") ||
+        lowered.includes("forbidden") ||
+        lowered.includes("403")
+      ) {
+        friendly = t("auth.invalidCredentials");
+      } else if (
+        lowered.includes("failed to fetch") ||
+        lowered.includes("networkerror") ||
+        lowered.includes("load failed") ||
+        lowered.includes("network")
+      ) {
+        friendly = t("auth.networkError", {
+          defaultValue:
+            "Could not reach the server. Check your connection and try again.",
+        });
+      } else if (lowered.includes("429") || lowered.includes("too many")) {
+        friendly = t("auth.tooManyAttempts", {
+          defaultValue: "Too many attempts. Please wait a minute and try again.",
+        });
+      } else if (lowered.startsWith("request failed: 5") || lowered.includes("500")) {
+        friendly = t("auth.serverError", {
+          defaultValue: "Server error. Please try again in a moment.",
+        });
+      } else {
+        friendly = raw || t("auth.loginFailed");
+      }
       setError(friendly);
       setIsSubmitting(false);
       return;
@@ -80,7 +104,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-col justify-between bg-primary p-12 text-primary-foreground">
         <div>
           <div className="flex items-center gap-3 mb-16">
-            <Image src="/TMS_LOGO.png" alt="TMS Logo" width={48} height={48} className="" />
+            <Image src="/Nroho_Logo.png" alt="Nroho Logo" width={48} height={48} className="" />
             <span className="text-2xl font-display font-bold">TMS</span>
           </div>
           <h1 className="text-4xl font-display font-bold leading-tight">
@@ -100,7 +124,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md space-y-6 sm:space-y-8">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 lg:hidden">
-            <Image src="/TMS_LOGO.png" alt="TMS Logo" width={36} height={36} />
+            <Image src="/Nroho_Logo.png" alt="Nroho Logo" width={36} height={36} />
             <span className="text-xl font-display font-bold text-foreground">
               TMS
             </span>
