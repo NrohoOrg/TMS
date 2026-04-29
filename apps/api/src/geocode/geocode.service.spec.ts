@@ -1,10 +1,5 @@
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
 import { GeocodeService } from './geocode.service';
-
-jest.mock('axios');
-
-const mockedAxios = jest.mocked(axios);
+import type { GeocodeProvider } from './providers/geocode-provider';
 
 describe('GeocodeService', () => {
   let service: GeocodeService;
@@ -16,33 +11,17 @@ describe('GeocodeService', () => {
     },
   };
 
-  const redisClient = {
-    set: jest.fn(),
-  };
-
-  const redisService = {
-    getClient: jest.fn(() => redisClient),
-  };
-
-  const config = {
-    get: jest.fn((key: string) => {
-      if (key === 'NOMINATIM_URL') {
-        return 'https://nominatim.test';
-      }
-      return undefined;
-    }),
+  const provider: jest.Mocked<GeocodeProvider> = {
+    search: jest.fn(),
+    resolve: jest.fn(),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new GeocodeService(
-      prisma as any,
-      redisService as any,
-      config as unknown as ConfigService,
-    );
+    service = new GeocodeService(prisma as any, provider);
   });
 
-  it('returns fresh cached results without calling nominatim', async () => {
+  it('returns fresh cached results without calling the provider', async () => {
     const cachedResults = [
       {
         placeId: '1',
@@ -62,29 +41,12 @@ describe('GeocodeService', () => {
     const out = await service.search({ q: '  ALGIERS  ', limit: 5 } as any);
 
     expect(out).toEqual(cachedResults);
-    expect(redisClient.set).not.toHaveBeenCalled();
-    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(provider.search).not.toHaveBeenCalled();
   });
 
-  it('stores response in cache after nominatim call on cache miss', async () => {
+  it('delegates to the provider and caches the result on a miss', async () => {
     prisma.geocodeCache.findUnique.mockResolvedValue(null);
-    redisClient.set.mockResolvedValue('OK');
-    mockedAxios.get.mockResolvedValue({
-      data: [
-        {
-          place_id: 123,
-          display_name: 'Algiers, Algeria',
-          lat: '36.7538',
-          lon: '3.0588',
-          type: 'city',
-          importance: 0.85,
-        },
-      ],
-    } as any);
-
-    const out = await service.search({ q: 'Algiers', limit: 5 } as any);
-
-    expect(out).toEqual([
+    const providerResults = [
       {
         placeId: '123',
         displayName: 'Algiers, Algeria',
@@ -93,18 +55,23 @@ describe('GeocodeService', () => {
         type: 'city',
         importance: 0.85,
       },
-    ]);
-    expect(redisClient.set).toHaveBeenCalledWith('nominatim:rate', '1', 'EX', 1, 'NX');
+    ];
+    provider.search.mockResolvedValue(providerResults);
+
+    const out = await service.search({ q: 'Algiers', limit: 5 } as any);
+
+    expect(out).toEqual(providerResults);
+    expect(provider.search).toHaveBeenCalledWith('algiers', 5);
     expect(prisma.geocodeCache.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { normalizedQuery: 'algiers' },
         update: expect.objectContaining({
-          results: out,
+          results: providerResults,
           expiresAt: expect.any(Date),
         }),
         create: expect.objectContaining({
           normalizedQuery: 'algiers',
-          results: out,
+          results: providerResults,
           expiresAt: expect.any(Date),
         }),
       }),

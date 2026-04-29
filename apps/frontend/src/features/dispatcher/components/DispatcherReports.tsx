@@ -32,25 +32,27 @@ import { PageHeader } from "@/components/ui/page-header";
 import { useReports } from "@/features/shared/hooks";
 import { exportReportsUrl } from "@/lib/api-services";
 import { Download, BarChart3 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const PIE_COLORS = ["#2265c3", "#dc2626", "#0d9488", "#7c3aed", "#f59e0b", "#16a34a"];
 
 export default function DispatcherReports() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState<"1d" | "7d" | "30d">("7d");
   const reportsQuery = useReports({ period });
   const r = reportsQuery.data;
 
   function handleExport() {
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://172.20.10.2:3001/api";
     const path = exportReportsUrl({ period });
     window.open(`${apiBase}${path}`, "_blank");
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title="Operational Reports"
-        subtitle="Aggregate KPIs, daily completion, and driver performance."
+        title={t("dispatcher.reports.title")}
+        subtitle={t("dispatcher.reports.subtitle")}
         actions={
           <div className="flex items-center gap-2">
             <Select value={period} onValueChange={(v) => setPeriod(v as "1d" | "7d" | "30d")}>
@@ -58,13 +60,13 @@ export default function DispatcherReports() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1d">Today</SelectItem>
+                <SelectItem value="1d">{t("common.today")}</SelectItem>
                 <SelectItem value="7d">Last 7 days</SelectItem>
                 <SelectItem value="30d">Last 30 days</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" variant="outline" onClick={handleExport}>
-              <Download className="w-3.5 h-3.5 mr-1" /> Export CSV
+              <Download className="w-3.5 h-3.5 me-1" /> Export CSV
             </Button>
           </div>
         }
@@ -82,8 +84,8 @@ export default function DispatcherReports() {
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <KpiTile label="Tasks" value={r.kpis.totalTasks} />
-            <KpiTile label="Completed" value={r.kpis.completedTasks} tone="success" />
+            <KpiTile label={t("admin.dashboard.tasks")} value={r.kpis.totalTasks} />
+            <KpiTile label={t("common.completed")} value={r.kpis.completedTasks} tone="success" />
             <KpiTile label="Completion Rate" value={`${r.kpis.completionRate}%`} />
             <KpiTile label="Plans Published" value={r.kpis.publishedPlans} />
           </div>

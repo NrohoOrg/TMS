@@ -7,3 +7,5 @@ export * from "./useAvailability";
 export * from "./useGeocode";
 export * from "./useAdmin";
 export * from "./useManualPlanning";
+export * from "./useIncidents";
+export * from "./useImpact";

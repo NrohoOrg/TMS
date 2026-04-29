@@ -3,10 +3,18 @@
  * Mirrors NestJS controllers in apps/api/src/.
  */
 
-export type Role = "ADMIN" | "DISPATCHER" | "DRIVER";
+export type Role = "ADMIN" | "DISPATCHER" | "DRIVER" | "CADRE";
 
-export type Priority = "low" | "normal" | "high" | "urgent";
+export type Priority = "normal" | "urgent";
 export type TaskStatus = "pending" | "assigned" | "cancelled";
+export type TaskApprovalStatus = "pending_approval" | "approved" | "rejected";
+export type CadreDisplayStatus =
+  | "created"
+  | "approved"
+  | "rejected"
+  | "assigned"
+  | "started"
+  | "completed";
 export type StopType = "pickup" | "dropoff";
 export type StopStatus = "pending" | "arrived" | "done" | "skipped";
 export type PlanStatus = "draft" | "published";
@@ -56,13 +64,18 @@ export interface Task {
   dropoffAddress: string;
   dropoffLat: number;
   dropoffLng: number;
-  dropoffDeadline: string;
-  dropoffServiceMinutes: number;
   priority: Priority;
   status: TaskStatus;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  approvalStatus?: TaskApprovalStatus;
+  createdById?: string | null;
+}
+
+export interface CadreTaskView extends Task {
+  displayStatus: CadreDisplayStatus;
+  assignedDriverName: string | null;
 }
 
 export interface PaginatedTasks {
@@ -159,6 +172,10 @@ export interface MonitorDriver {
   phone: string;
   vehicle: null;
   status: "on_route" | "at_stop" | "completed";
+  /** false when the dispatcher has marked the driver unavailable today. */
+  available: boolean;
+  /** HH:MM when the driver became unavailable. Null if still available. */
+  unavailableFromTime: string | null;
   currentStop: {
     stopId: string;
     sequence: number;

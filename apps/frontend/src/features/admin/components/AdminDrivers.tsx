@@ -32,6 +32,7 @@ import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { Loader2, Pencil, Plus, Search, Trash2, UserCheck } from "lucide-react";
 import {
   useCreateDriver,
@@ -65,6 +66,7 @@ const EMPTY: DriverForm = {
 
 export default function AdminDrivers() {
   const { toast } = useToast();
+  const { t: tFn } = useTranslation();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Driver | null>(null);
@@ -108,8 +110,8 @@ export default function AdminDrivers() {
   async function save() {
     if (!form.name || !form.phone) {
       toast({
-        title: "Missing fields",
-        description: "Name and phone are required.",
+        title: tFn("common.missingFields"),
+        description: tFn("admin.drivers.missingNamePhone"),
         variant: "destructive",
       });
       return;
@@ -117,43 +119,43 @@ export default function AdminDrivers() {
     try {
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: form });
-        toast({ title: "Driver updated" });
+        toast({ title: tFn("admin.drivers.driverUpdated") });
       } else {
         await createMut.mutateAsync(form);
-        toast({ title: "Driver created" });
+        toast({ title: tFn("admin.drivers.driverCreated") });
       }
       setOpen(false);
     } catch (err) {
       toast({
-        title: "Save failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: tFn("common.saveFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
     }
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Deactivate this driver?")) return;
+    if (!confirm(tFn("admin.drivers.confirmDeactivate"))) return;
     try {
       await deleteMut.mutateAsync(id);
-      toast({ title: "Driver removed" });
+      toast({ title: tFn("admin.drivers.driverRemoved") });
     } catch (err) {
       toast({
-        title: "Delete failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: tFn("common.deleteFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title="Drivers"
-        subtitle="Fleet roster — shift hours, depot location, and active status."
+        title={tFn("admin.drivers.title")}
+        subtitle={tFn("admin.drivers.subtitle")}
         actions={
           <Button size="sm" onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-1" /> Add driver
+            <Plus className="w-4 h-4 me-1" /> {tFn("admin.drivers.addDriver")}
           </Button>
         }
       />
@@ -161,10 +163,10 @@ export default function AdminDrivers() {
       <Card>
         <CardHeader className="pb-2">
           <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search drivers…"
-              className="pl-9 h-9"
+              placeholder={tFn("admin.drivers.searchPlaceholder")}
+              className="ps-9 h-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -175,26 +177,26 @@ export default function AdminDrivers() {
             <Skeleton className="h-48 w-full" />
           ) : driversQuery.isError ? (
             <ErrorState
-              message={driversQuery.error instanceof Error ? driversQuery.error.message : "Failed to load drivers"}
+              message={driversQuery.error instanceof Error ? driversQuery.error.message : tFn("common.unknownError")}
               onRetry={() => driversQuery.refetch()}
             />
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={UserCheck}
-              title="No drivers"
-              description="Add a driver to begin assigning routes."
+              title={tFn("admin.drivers.noDrivers")}
+              description={tFn("admin.drivers.noDriversHint")}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Shift</TableHead>
-                  <TableHead>Depot</TableHead>
-                  <TableHead>Capacity</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24">Actions</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableName")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tablePhone")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableShift")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableDepot")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableCapacity")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableStatus")}</TableHead>
+                  <TableHead className="w-24">{tFn("admin.drivers.tableActions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -217,7 +219,7 @@ export default function AdminDrivers() {
                             : "bg-muted text-muted-foreground"
                         }
                       >
-                        {d.active ? "active" : "inactive"}
+                        {d.active ? tFn("common.active") : tFn("common.inactive")}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -251,22 +253,22 @@ export default function AdminDrivers() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit driver" : "New driver"}</DialogTitle>
+            <DialogTitle>{editing ? tFn("admin.drivers.editDriver") : tFn("admin.drivers.newDriver")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Name</Label>
+                <Label>{tFn("common.name")}</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div className="space-y-1">
-                <Label>Phone</Label>
+                <Label>{tFn("common.phone")}</Label>
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Shift Start</Label>
+                <Label>{tFn("admin.drivers.shiftStart")}</Label>
                 <Input
                   type="time"
                   value={form.shiftStart}
@@ -274,7 +276,7 @@ export default function AdminDrivers() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Shift End</Label>
+                <Label>{tFn("admin.drivers.shiftEnd")}</Label>
                 <Input
                   type="time"
                   value={form.shiftEnd}
@@ -284,7 +286,7 @@ export default function AdminDrivers() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Depot Lat</Label>
+                <Label>{tFn("admin.drivers.depotLat")}</Label>
                 <Input
                   type="number"
                   step="0.000001"
@@ -293,7 +295,7 @@ export default function AdminDrivers() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Depot Lng</Label>
+                <Label>{tFn("admin.drivers.depotLng")}</Label>
                 <Input
                   type="number"
                   step="0.000001"
@@ -303,7 +305,7 @@ export default function AdminDrivers() {
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Capacity (units)</Label>
+              <Label>{tFn("admin.drivers.capacityUnits")}</Label>
               <Input
                 type="number"
                 value={form.capacityUnits ?? ""}
@@ -316,7 +318,7 @@ export default function AdminDrivers() {
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label>Active</Label>
+              <Label>{tFn("admin.drivers.active")}</Label>
               <Switch
                 checked={form.active}
                 onCheckedChange={(checked) => setForm({ ...form, active: checked })}
@@ -325,13 +327,13 @@ export default function AdminDrivers() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
+              {tFn("common.cancel")}
             </Button>
             <Button onClick={save} disabled={createMut.isPending || updateMut.isPending}>
               {(createMut.isPending || updateMut.isPending) && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
               )}
-              {editing ? "Save" : "Create"}
+              {editing ? tFn("common.save") : tFn("common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

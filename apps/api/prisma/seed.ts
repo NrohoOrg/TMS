@@ -39,7 +39,17 @@ async function main() {
     },
   });
 
-  console.log(`Created users: ${admin.name}, ${dispatcher.name}`);
+  const cadre = await prisma.user.create({
+    data: {
+      email: 'cadre@example.com',
+      name: 'Yacine Cadre',
+      phone: '+213 555 0110',
+      passwordHash: await hash('Cadre1234!'),
+      role: Role.CADRE,
+    },
+  });
+
+  console.log(`Created users: ${admin.name}, ${dispatcher.name}, ${cadre.name}`);
 
   // ── Drivers (real Algiers depots) ──
   const driversData = [
@@ -134,8 +144,6 @@ async function main() {
       dropoffAddress: 'CHU Mustapha Pacha, Place du 1er Mai, Algiers',
       dropoffLat: 36.7590,
       dropoffLng: 3.0590,
-      dropoffDeadline: todayAt(8, 0),
-      dropoffServiceMinutes: 10,
       priority: Priority.urgent,
       status: TaskStatus.pending,
       notes: 'Cold chain - handle with care',
@@ -151,8 +159,6 @@ async function main() {
       dropoffAddress: 'Hotel Sofitel Algiers Hamma Garden',
       dropoffLat: 36.7490,
       dropoffLng: 3.0710,
-      dropoffDeadline: todayAt(10, 0),
-      dropoffServiceMinutes: 5,
       priority: Priority.urgent,
       status: TaskStatus.pending,
       notes: 'Contact: M. Khalil +213 555 1001',
@@ -168,8 +174,6 @@ async function main() {
       dropoffAddress: 'Institut Pasteur Algerie, Rue du Docteur Laveran',
       dropoffLat: 36.7648,
       dropoffLng: 3.0535,
-      dropoffDeadline: todayAt(9, 0),
-      dropoffServiceMinutes: 10,
       priority: Priority.urgent,
       status: TaskStatus.pending,
       notes: 'Biohazard - special handling required',
@@ -186,9 +190,7 @@ async function main() {
       dropoffAddress: 'Client Office, Rue Ahmed Ghermoul, Hydra',
       dropoffLat: 36.7450,
       dropoffLng: 3.0370,
-      dropoffDeadline: todayAt(12, 0),
-      dropoffServiceMinutes: 10,
-      priority: Priority.high,
+      priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Contact: Samira R. +213 555 1004',
     },
@@ -203,9 +205,7 @@ async function main() {
       dropoffAddress: 'INPED Training Center, Boumerdes',
       dropoffLat: 36.7540,
       dropoffLng: 3.4710,
-      dropoffDeadline: todayAt(9, 30),
-      dropoffServiceMinutes: 5,
-      priority: Priority.high,
+      priority: Priority.normal,
       status: TaskStatus.pending,
       notes: '8 employees - HR Dept',
     },
@@ -220,9 +220,7 @@ async function main() {
       dropoffAddress: 'Restaurant El Djenina, Rue Larbi Ben Mhidi',
       dropoffLat: 36.7710,
       dropoffLng: 3.0600,
-      dropoffDeadline: todayAt(10, 0),
-      dropoffServiceMinutes: 15,
-      priority: Priority.high,
+      priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Fresh produce - perishable',
     },
@@ -237,9 +235,7 @@ async function main() {
       dropoffAddress: 'BNA Branch, El Biar',
       dropoffLat: 36.7680,
       dropoffLng: 3.0350,
-      dropoffDeadline: todayAt(11, 0),
-      dropoffServiceMinutes: 5,
-      priority: Priority.high,
+      priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Confidential - signature required',
     },
@@ -255,8 +251,6 @@ async function main() {
       dropoffAddress: 'Residence Bab El Oued, Rue de la Liberte',
       dropoffLat: 36.7870,
       dropoffLng: 3.0470,
-      dropoffDeadline: todayAt(15, 0),
-      dropoffServiceMinutes: 30,
       priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Heavy items - 2 person lift needed',
@@ -272,8 +266,6 @@ async function main() {
       dropoffAddress: 'TechnoStore, Avenue Mohamed V, Kouba',
       dropoffLat: 36.7270,
       dropoffLng: 3.0560,
-      dropoffDeadline: todayAt(14, 0),
-      dropoffServiceMinutes: 15,
       priority: Priority.normal,
       status: TaskStatus.pending,
     },
@@ -288,8 +280,6 @@ async function main() {
       dropoffAddress: 'Entrepot Blida, Zone Industrielle',
       dropoffLat: 36.4700,
       dropoffLng: 2.8280,
-      dropoffDeadline: todayAt(14, 0),
-      dropoffServiceMinutes: 20,
       priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Container #ALG-4521 - customs cleared',
@@ -305,8 +295,6 @@ async function main() {
       dropoffAddress: 'Palais des Congres, Club des Pins',
       dropoffLat: 36.7550,
       dropoffLng: 2.9450,
-      dropoffDeadline: todayAt(12, 0),
-      dropoffServiceMinutes: 20,
       priority: Priority.normal,
       status: TaskStatus.pending,
       notes: '50 person lunch - keep warm',
@@ -322,8 +310,6 @@ async function main() {
       dropoffAddress: 'Chantier Dely Ibrahim',
       dropoffLat: 36.7520,
       dropoffLng: 3.0040,
-      dropoffDeadline: todayAt(13, 0),
-      dropoffServiceMinutes: 20,
       priority: Priority.normal,
       status: TaskStatus.pending,
     },
@@ -338,8 +324,6 @@ async function main() {
       dropoffAddress: 'Boutique Mode, Rue Ben Mhidi, Centre',
       dropoffLat: 36.7700,
       dropoffLng: 3.0580,
-      dropoffDeadline: todayAt(14, 0),
-      dropoffServiceMinutes: 10,
       priority: Priority.normal,
       status: TaskStatus.pending,
     },
@@ -354,8 +338,6 @@ async function main() {
       dropoffAddress: 'Ecole Primaire Chevalley, El Biar',
       dropoffLat: 36.7630,
       dropoffLng: 3.0290,
-      dropoffDeadline: todayAt(11, 30),
-      dropoffServiceMinutes: 10,
       priority: Priority.normal,
       status: TaskStatus.pending,
     },
@@ -370,8 +352,6 @@ async function main() {
       dropoffAddress: 'Hotel Hilton, Pins Maritimes',
       dropoffLat: 36.7530,
       dropoffLng: 2.9730,
-      dropoffDeadline: todayAt(14, 0),
-      dropoffServiceMinutes: 10,
       priority: Priority.normal,
       status: TaskStatus.pending,
       notes: '200 bottles - use freight elevator',
@@ -387,8 +367,6 @@ async function main() {
       dropoffAddress: 'Garage Bouzid, Rue de Tripoli, Hydra',
       dropoffLat: 36.7430,
       dropoffLng: 3.0340,
-      dropoffDeadline: todayAt(12, 0),
-      dropoffServiceMinutes: 10,
       priority: Priority.normal,
       status: TaskStatus.pending,
     },
@@ -403,8 +381,6 @@ async function main() {
       dropoffAddress: 'Salle des Fetes, Cheraga',
       dropoffLat: 36.7650,
       dropoffLng: 2.9610,
-      dropoffDeadline: todayAt(13, 0),
-      dropoffServiceMinutes: 15,
       priority: Priority.normal,
       status: TaskStatus.pending,
       notes: 'Fragile - keep upright',
@@ -421,9 +397,7 @@ async function main() {
       dropoffAddress: 'Self Storage Algiers, Birkhadem',
       dropoffLat: 36.7180,
       dropoffLng: 3.0540,
-      dropoffDeadline: todayAt(17, 0),
-      dropoffServiceMinutes: 15,
-      priority: Priority.low,
+      priority: Priority.normal,
       status: TaskStatus.pending,
       notes: '12 archive boxes',
     },
@@ -438,9 +412,7 @@ async function main() {
       dropoffAddress: 'Centre Logistique, Dar El Beida',
       dropoffLat: 36.7140,
       dropoffLng: 3.2200,
-      dropoffDeadline: todayAt(17, 0),
-      dropoffServiceMinutes: 10,
-      priority: Priority.low,
+      priority: Priority.normal,
       status: TaskStatus.pending,
     },
     {
@@ -454,9 +426,7 @@ async function main() {
       dropoffAddress: 'Centre de Tri, Baraki',
       dropoffLat: 36.6670,
       dropoffLng: 3.0960,
-      dropoffDeadline: todayAt(17, 0),
-      dropoffServiceMinutes: 10,
-      priority: Priority.low,
+      priority: Priority.normal,
       status: TaskStatus.pending,
     },
   ];
@@ -486,14 +456,18 @@ async function main() {
     where: { id: 1 },
     update: {
       maxSolveSeconds: 30,
-      speedKmh: 35,
+      speedKmh: 50,
       objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
+      pickupServiceMinutesDefault: 20,
+      dropoffWithinHours: 2,
     },
     create: {
       id: 1,
       maxSolveSeconds: 30,
-      speedKmh: 35,
+      speedKmh: 50,
       objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
+      pickupServiceMinutesDefault: 20,
+      dropoffWithinHours: 2,
     },
   });
   console.log('Config updated');
@@ -535,12 +509,11 @@ async function main() {
   console.log(`Drivers: ${drivers.length} (${drivers.filter(d => d.active).length} active)`);
   console.log(`Tasks:   ${tasks.length} for today (${todayDate.toISOString().slice(0, 10)})`);
   console.log(`  urgent: ${tasksData.filter(t => t.priority === Priority.urgent).length}`);
-  console.log(`  high:   ${tasksData.filter(t => t.priority === Priority.high).length}`);
   console.log(`  normal: ${tasksData.filter(t => t.priority === Priority.normal).length}`);
-  console.log(`  low:    ${tasksData.filter(t => t.priority === Priority.low).length}`);
   console.log(`\nCredentials:`);
   console.log(`  Admin:      admin@example.com / Admin1234!`);
   console.log(`  Dispatcher: dispatcher@example.com / Dispatch1234!`);
+  console.log(`  Cadre:      cadre@example.com / Cadre1234!`);
   console.log(`\nOptimize for date: ${todayDate.toISOString().slice(0, 10)}`);
 }
 

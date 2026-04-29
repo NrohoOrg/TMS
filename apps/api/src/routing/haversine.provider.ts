@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { LatLng, RoutingMatrix, RoutingMatrixProvider } from '@contracts/index';
 
 const EARTH_RADIUS_M = 6371000;
-const ASSUMED_SPEED_KMH = 40;
+const ASSUMED_SPEED_KMH = 50;
 
 @Injectable()
 export class HaversineMatrixProvider implements RoutingMatrixProvider {

@@ -1,6 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Priority, Prisma, Task, TaskStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Priority, Prisma, Role, StopStatus, Task, TaskApprovalStatus, TaskStatus } from '@prisma/client';
 import { parse } from 'csv-parse/sync';
+import { AuthenticatedUser } from '../common/types/authenticated-user.type';
+import { getTaskExecutionState } from '../planning/frozen-plan.helpers';
+import { ManualPlanningService } from '../planning/manual-planning.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ListTasksDto } from './dto/list-tasks.dto';
@@ -12,16 +15,16 @@ export const TASK_IMPORT_HEADERS = [
   'pickupLat',
   'pickupLng',
   'pickupWindowStart',
-  'pickupWindowEnd',
-  'pickupServiceMinutes',
   'dropoffAddress',
   'dropoffLat',
   'dropoffLng',
-  'dropoffDeadline',
-  'dropoffServiceMinutes',
   'priority',
   'notes',
 ] as const;
+
+// R5.2.2: pickup window length is fixed (Time + 30 min) when the dispatcher
+// supplies a single pickup time on the simplified form.
+export const PICKUP_WINDOW_LENGTH_MINUTES = 30;
 
 export type TaskImportError = {
   row: number;
@@ -42,9 +45,25 @@ export type TaskListResult = {
   totalPages: number;
 };
 
+export type CadreDisplayStatus =
+  | 'created'
+  | 'approved'
+  | 'rejected'
+  | 'assigned'
+  | 'started'
+  | 'completed';
+
+export type CadreTaskView = Task & {
+  displayStatus: CadreDisplayStatus;
+  assignedDriverName: string | null;
+};
+
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly manualPlanningService: ManualPlanningService,
+  ) {}
 
   async findOne(id: string): Promise<Task> {
     const task = await this.prisma.task.findUnique({ where: { id } });
@@ -101,11 +120,14 @@ export class TasksService {
     };
   }
 
-  async create(dto: CreateTaskDto): Promise<Task> {
+  async create(dto: CreateTaskDto, currentUser?: AuthenticatedUser): Promise<Task> {
     const pickupWindowStart = new Date(dto.pickupWindowStart);
-    const pickupWindowEnd = new Date(dto.pickupWindowEnd);
-    const dropoffDeadline = new Date(dto.dropoffDeadline);
-    this.validateWindowOrdering(pickupWindowStart, pickupWindowEnd, dropoffDeadline);
+    if (Number.isNaN(pickupWindowStart.getTime())) {
+      throw new BadRequestException('pickupWindowStart must be a valid datetime');
+    }
+    const pickupWindowEnd = this.derivePickupWindowEnd(pickupWindowStart);
+    const pickupServiceMinutes = await this.getPickupServiceMinutesDefault();
+    const isCadre = currentUser?.role === Role.CADRE;
 
     return this.prisma.task.create({
       data: {
@@ -115,16 +137,122 @@ export class TasksService {
         pickupLng: dto.pickupLng,
         pickupWindowStart,
         pickupWindowEnd,
-        pickupServiceMinutes: dto.pickupServiceMinutes ?? 0,
+        pickupServiceMinutes,
         dropoffAddress: dto.dropoffAddress,
         dropoffLat: dto.dropoffLat,
         dropoffLng: dto.dropoffLng,
-        dropoffDeadline,
-        dropoffServiceMinutes: dto.dropoffServiceMinutes ?? 0,
         priority: dto.priority ?? Priority.normal,
         notes: dto.notes?.trim() ? dto.notes.trim() : null,
+        createdById: currentUser?.id ?? null,
+        approvalStatus: isCadre
+          ? TaskApprovalStatus.pending_approval
+          : TaskApprovalStatus.approved,
       },
     });
+  }
+
+  async listMine(currentUser: AuthenticatedUser): Promise<CadreTaskView[]> {
+    const tasks = await this.prisma.task.findMany({
+      where: { createdById: currentUser.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        stops: {
+          orderBy: { sequence: 'asc' },
+          select: {
+            status: true,
+            route: { select: { driver: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+
+    return tasks.map((task) => {
+      const driverName = task.stops[0]?.route?.driver?.name ?? null;
+      return {
+        ...this.stripCadreInternals(task),
+        displayStatus: this.deriveCadreDisplayStatus(task),
+        assignedDriverName: driverName,
+      };
+    });
+  }
+
+  async cadreUpdate(
+    id: string,
+    dto: UpdateTaskDto,
+    currentUser: AuthenticatedUser,
+  ): Promise<Task> {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.createdById !== currentUser.id) {
+      throw new ForbiddenException('You can only edit your own tasks');
+    }
+    if (task.approvalStatus === TaskApprovalStatus.approved) {
+      throw new ConflictException('Approved tasks cannot be edited');
+    }
+    return this.update(id, dto);
+  }
+
+  async cadreRemove(id: string, currentUser: AuthenticatedUser): Promise<void> {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.createdById !== currentUser.id) {
+      throw new ForbiddenException('You can only delete your own tasks');
+    }
+    if (task.approvalStatus === TaskApprovalStatus.approved) {
+      throw new ConflictException('Approved tasks cannot be deleted');
+    }
+    await this.prisma.task.delete({ where: { id } });
+  }
+
+  async approve(id: string, currentUser: AuthenticatedUser): Promise<Task> {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.approvalStatus === TaskApprovalStatus.approved) return task;
+    return this.prisma.task.update({
+      where: { id },
+      data: {
+        approvalStatus: TaskApprovalStatus.approved,
+        decidedAt: new Date(),
+        decidedById: currentUser.id,
+      },
+    });
+  }
+
+  async reject(id: string, currentUser: AuthenticatedUser): Promise<Task> {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (task.approvalStatus === TaskApprovalStatus.approved) {
+      throw new ConflictException('Cannot reject an already approved task');
+    }
+    return this.prisma.task.update({
+      where: { id },
+      data: {
+        approvalStatus: TaskApprovalStatus.rejected,
+        decidedAt: new Date(),
+        decidedById: currentUser.id,
+      },
+    });
+  }
+
+  private deriveCadreDisplayStatus(task: {
+    approvalStatus: TaskApprovalStatus;
+    stops: { status: StopStatus }[];
+  }): CadreDisplayStatus {
+    if (task.approvalStatus === TaskApprovalStatus.pending_approval) return 'created';
+    if (task.approvalStatus === TaskApprovalStatus.rejected) return 'rejected';
+    if (task.stops.length === 0) return 'approved';
+    const allDone = task.stops.every((s) => s.status === StopStatus.done);
+    if (allDone) return 'completed';
+    const anyStarted = task.stops.some(
+      (s) => s.status === StopStatus.arrived || s.status === StopStatus.done,
+    );
+    if (anyStarted) return 'started';
+    return 'assigned';
+  }
+
+  private stripCadreInternals<T extends { stops?: unknown }>(task: T): Omit<T, 'stops'> {
+    const { stops: _stops, ...rest } = task;
+    return rest;
   }
 
   async update(id: string, dto: UpdateTaskDto): Promise<Task> {
@@ -132,7 +260,10 @@ export class TasksService {
       throw new BadRequestException('status cannot be updated via this endpoint');
     }
 
-    const existing = await this.prisma.task.findUnique({ where: { id } });
+    const existing = await this.prisma.task.findUnique({
+      where: { id },
+      include: { stops: { select: { status: true } } },
+    });
     if (!existing) {
       throw new NotFoundException('Task not found');
     }
@@ -141,26 +272,36 @@ export class TasksService {
       throw new BadRequestException('Cannot update a cancelled task');
     }
 
-    const pickupWindowStart = dto.pickupWindowStart
-      ? new Date(dto.pickupWindowStart)
-      : existing.pickupWindowStart;
-    const pickupWindowEnd = dto.pickupWindowEnd ? new Date(dto.pickupWindowEnd) : existing.pickupWindowEnd;
-    const dropoffDeadline = dto.dropoffDeadline ? new Date(dto.dropoffDeadline) : existing.dropoffDeadline;
-    this.validateWindowOrdering(pickupWindowStart, pickupWindowEnd, dropoffDeadline);
+    // v1.1 R1.2 — frozen plan invariant: once any of the task's stops has
+    // started, the dispatcher must not edit task fields. The cancellation
+    // path (DELETE /tasks/:id) is governed separately and refined by R1.4.
+    const executionState = getTaskExecutionState(
+      { status: existing.status },
+      existing.stops,
+    );
+    if (executionState === 'in_progress') {
+      throw new ConflictException('Cannot update a task whose execution has started');
+    }
+    if (executionState === 'completed') {
+      throw new ConflictException('Cannot update a completed task');
+    }
 
     const data: Prisma.TaskUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.pickupAddress !== undefined) data.pickupAddress = dto.pickupAddress;
     if (dto.pickupLat !== undefined) data.pickupLat = dto.pickupLat;
     if (dto.pickupLng !== undefined) data.pickupLng = dto.pickupLng;
-    if (dto.pickupWindowStart !== undefined) data.pickupWindowStart = pickupWindowStart;
-    if (dto.pickupWindowEnd !== undefined) data.pickupWindowEnd = pickupWindowEnd;
-    if (dto.pickupServiceMinutes !== undefined) data.pickupServiceMinutes = dto.pickupServiceMinutes;
+    if (dto.pickupWindowStart !== undefined) {
+      const pickupWindowStart = new Date(dto.pickupWindowStart);
+      if (Number.isNaN(pickupWindowStart.getTime())) {
+        throw new BadRequestException('pickupWindowStart must be a valid datetime');
+      }
+      data.pickupWindowStart = pickupWindowStart;
+      data.pickupWindowEnd = this.derivePickupWindowEnd(pickupWindowStart);
+    }
     if (dto.dropoffAddress !== undefined) data.dropoffAddress = dto.dropoffAddress;
     if (dto.dropoffLat !== undefined) data.dropoffLat = dto.dropoffLat;
     if (dto.dropoffLng !== undefined) data.dropoffLng = dto.dropoffLng;
-    if (dto.dropoffDeadline !== undefined) data.dropoffDeadline = dropoffDeadline;
-    if (dto.dropoffServiceMinutes !== undefined) data.dropoffServiceMinutes = dto.dropoffServiceMinutes;
     if (dto.priority !== undefined) data.priority = dto.priority;
     if (dto.notes !== undefined) data.notes = dto.notes?.trim() ? dto.notes.trim() : null;
 
@@ -170,25 +311,73 @@ export class TasksService {
     });
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, currentUser: AuthenticatedUser): Promise<void> {
     const task = await this.prisma.task.findUnique({
       where: { id },
-      select: { status: true },
+      select: {
+        id: true,
+        status: true,
+        stops: {
+          select: { id: true, routeId: true, status: true },
+        },
+      },
     });
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
 
-    if (task.status === TaskStatus.assigned) {
-      throw new ConflictException('Cannot cancel an assigned task');
+    // Idempotent: re-cancelling a cancelled task is a silent no-op (v1).
+    if (task.status === TaskStatus.cancelled) {
+      return;
     }
 
-    if (task.status !== TaskStatus.cancelled) {
-      await this.prisma.task.update({
+    const executionState = getTaskExecutionState(
+      { status: task.status },
+      task.stops,
+    );
+
+    if (executionState === 'in_progress') {
+      throw new ConflictException(
+        'Cannot cancel a task whose execution has started',
+      );
+    }
+    if (executionState === 'completed') {
+      throw new ConflictException('Cannot cancel a completed task');
+    }
+
+    // pending / assigned: cancellable. For assigned tasks, mark each stop
+    // as `skipped` (with no actualArrivalS, so the recalc treats them as
+    // dispatcher-cancelled phantoms) and write StopEvent entries for audit.
+    const affectedRouteIds = new Set<string>();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.task.update({
         where: { id },
         data: { status: TaskStatus.cancelled },
       });
+
+      for (const stop of task.stops) {
+        await tx.stop.update({
+          where: { id: stop.id },
+          data: { status: StopStatus.skipped },
+        });
+        await tx.stopEvent.create({
+          data: {
+            stopId: stop.id,
+            status: StopStatus.skipped,
+            notes: 'Task cancelled by dispatcher',
+            createdBy: currentUser.id,
+          },
+        });
+        affectedRouteIds.add(stop.routeId);
+      }
+    });
+
+    // Recompute downstream ETAs on each affected route. The R1.4-aware
+    // recalc bypasses dispatcher-cancelled stops entirely.
+    for (const routeId of affectedRouteIds) {
+      await this.manualPlanningService.recalculateRouteForIncidents(routeId);
     }
   }
 
@@ -252,6 +441,7 @@ export class TasksService {
 
     const errors: TaskImportError[] = [];
     const validRows: Prisma.TaskCreateInput[] = [];
+    const pickupServiceMinutes = await this.getPickupServiceMinutesDefault();
 
     dataRows.forEach((row, index) => {
       const rowNumber = index + 2;
@@ -270,7 +460,7 @@ export class TasksService {
         return acc;
       }, {});
 
-      const validation = this.validateImportRecord(record, rowNumber);
+      const validation = this.validateImportRecord(record, rowNumber, pickupServiceMinutes);
       if (validation.errors.length > 0) {
         errors.push(...validation.errors);
         return;
@@ -304,6 +494,7 @@ export class TasksService {
   private validateImportRecord(
     record: Record<string, string>,
     row: number,
+    pickupServiceMinutes: number,
   ): {
     data?: Prisma.TaskCreateInput;
     errors: TaskImportError[];
@@ -320,43 +511,9 @@ export class TasksService {
     const dropoffLng = this.parseFloatRange(record.dropoffLng, row, 'dropoffLng', -180, 180, errors);
 
     const pickupWindowStart = this.parseDateTime(record.pickupWindowStart, row, 'pickupWindowStart', errors);
-    const pickupWindowEnd = this.parseDateTime(record.pickupWindowEnd, row, 'pickupWindowEnd', errors);
-    const dropoffDeadline = this.parseDateTime(record.dropoffDeadline, row, 'dropoffDeadline', errors);
-
-    const pickupServiceMinutes = this.parseIntMin(
-      record.pickupServiceMinutes,
-      row,
-      'pickupServiceMinutes',
-      0,
-      errors,
-    );
-    const dropoffServiceMinutes = this.parseIntMin(
-      record.dropoffServiceMinutes,
-      row,
-      'dropoffServiceMinutes',
-      0,
-      errors,
-    );
 
     const priority = this.parsePriority(record.priority, row, errors);
     const notes = record.notes?.trim() ? record.notes.trim() : null;
-
-    if (pickupWindowStart && pickupWindowEnd && dropoffDeadline) {
-      if (pickupWindowStart >= pickupWindowEnd) {
-        errors.push({
-          row,
-          field: 'pickupWindowEnd',
-          message: 'pickupWindowStart must be earlier than pickupWindowEnd',
-        });
-      }
-      if (pickupWindowEnd >= dropoffDeadline) {
-        errors.push({
-          row,
-          field: 'dropoffDeadline',
-          message: 'pickupWindowEnd must be earlier than dropoffDeadline',
-        });
-      }
-    }
 
     if (
       errors.length > 0 ||
@@ -365,13 +522,9 @@ export class TasksService {
       pickupLat === null ||
       pickupLng === null ||
       !pickupWindowStart ||
-      !pickupWindowEnd ||
-      pickupServiceMinutes === null ||
       !dropoffAddress ||
       dropoffLat === null ||
       dropoffLng === null ||
-      !dropoffDeadline ||
-      dropoffServiceMinutes === null ||
       !priority
     ) {
       return { errors };
@@ -385,30 +538,24 @@ export class TasksService {
         pickupLat,
         pickupLng,
         pickupWindowStart,
-        pickupWindowEnd,
+        pickupWindowEnd: this.derivePickupWindowEnd(pickupWindowStart),
         pickupServiceMinutes,
         dropoffAddress,
         dropoffLat,
         dropoffLng,
-        dropoffDeadline,
-        dropoffServiceMinutes,
         priority,
         notes,
       },
     };
   }
 
-  private validateWindowOrdering(
-    pickupWindowStart: Date,
-    pickupWindowEnd: Date,
-    dropoffDeadline: Date,
-  ): void {
-    if (pickupWindowStart >= pickupWindowEnd) {
-      throw new BadRequestException('pickupWindowStart must be earlier than pickupWindowEnd');
-    }
-    if (pickupWindowEnd >= dropoffDeadline) {
-      throw new BadRequestException('pickupWindowEnd must be earlier than dropoffDeadline');
-    }
+  private derivePickupWindowEnd(pickupWindowStart: Date): Date {
+    return new Date(pickupWindowStart.getTime() + PICKUP_WINDOW_LENGTH_MINUTES * 60_000);
+  }
+
+  private async getPickupServiceMinutesDefault(): Promise<number> {
+    const config = await this.prisma.config.findUnique({ where: { id: 1 } });
+    return config?.pickupServiceMinutesDefault ?? 20;
   }
 
   private toDateStart(value: string): Date {
@@ -461,32 +608,6 @@ export class TasksService {
       errors.push({ row, field, message: `${field} must be between ${min} and ${max}` });
       return null;
     }
-    return parsed;
-  }
-
-  private parseIntMin(
-    value: string,
-    row: number,
-    field: string,
-    min: number,
-    errors: TaskImportError[],
-  ): number | null {
-    if (!value || value.length === 0) {
-      errors.push({ row, field, message: `${field} is required` });
-      return null;
-    }
-
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed)) {
-      errors.push({ row, field, message: `${field} must be an integer` });
-      return null;
-    }
-
-    if (parsed < min) {
-      errors.push({ row, field, message: `${field} must be >= ${min}` });
-      return null;
-    }
-
     return parsed;
   }
 

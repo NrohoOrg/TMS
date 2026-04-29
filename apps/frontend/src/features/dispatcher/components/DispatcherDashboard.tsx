@@ -12,7 +12,6 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
-  Clock,
   Map as MapIcon,
   Plus,
   Route as RouteIcon,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import { useDrivers, useMonitor, useTasks, usePlans } from "@/features/shared/hooks";
 import { useAuth } from "@/lib/auth-context";
+import { useTranslation } from "react-i18next";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -29,6 +29,7 @@ function todayStr() {
 export default function DispatcherDashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
   const today = todayStr();
 
   const tasksQuery = useTasks({ limit: 1, status: "pending" });
@@ -43,22 +44,22 @@ export default function DispatcherDashboard() {
   const todaysPlan = plansQuery.data?.find((p) => p.date === today);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title={`Welcome back${user?.name ? `, ${user.name.split(" ")[0]}` : ""}`}
-        subtitle={`Today is ${new Date().toLocaleDateString(undefined, {
+        title={`${user?.name ? `${user.name.split(" ")[0]} — ` : ""}${t("dispatcher.dashboard.title")}`}
+        subtitle={new Date().toLocaleDateString(i18n.language, {
           weekday: "long",
           day: "numeric",
           month: "long",
           year: "numeric",
-        })}`}
+        })}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={() => router.push("/dispatcher/tasks")}>
-              <Plus className="w-4 h-4 mr-1" /> New task
+              <Plus className="w-4 h-4 me-1" /> {t("dispatcher.tasks.newTask")}
             </Button>
             <Button size="sm" onClick={() => router.push("/dispatcher/planning")}>
-              <Sparkles className="w-4 h-4 mr-1" /> Plan today
+              <Sparkles className="w-4 h-4 me-1" /> {t("dispatcher.planning.title")}
             </Button>
           </>
         }
@@ -67,30 +68,30 @@ export default function DispatcherDashboard() {
       {/* Stat tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatTile
-          label="Pending tasks"
+          label={t("dispatcher.dashboard.pendingTasks")}
           value={tasksQuery.isLoading ? "…" : String(totalPending)}
           icon={ClipboardList}
           tone="info"
           onClick={() => router.push("/dispatcher/tasks?status=pending")}
         />
         <StatTile
-          label="Active drivers"
+          label={t("dispatcher.dashboard.activeDrivers")}
           value={driversQuery.isLoading ? "…" : String(activeDrivers.length)}
           icon={Users}
           onClick={() => router.push("/admin/drivers")}
         />
         <StatTile
-          label="Today's stops"
+          label={t("dispatcher.dashboard.todaysTasks")}
           value={monitorQuery.isLoading ? "…" : String(monitor?.overview.total ?? 0)}
           icon={RouteIcon}
-          onClick={() => router.push("/dispatcher/monitor")}
+          onClick={() => router.push("/dispatcher/operations")}
         />
         <StatTile
-          label="Delays"
+          label={t("dispatcher.dashboard.delays")}
           value={monitorQuery.isLoading ? "…" : String(monitor?.overview.delays ?? 0)}
           icon={AlertTriangle}
           tone={monitor && monitor.overview.delays > 0 ? "warn" : undefined}
-          onClick={() => router.push("/dispatcher/monitor")}
+          onClick={() => router.push("/dispatcher/operations")}
         />
       </div>
 
@@ -98,14 +99,14 @@ export default function DispatcherDashboard() {
         {/* Today's plan */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base font-display">Today&apos;s plan</CardTitle>
+            <CardTitle className="text-base font-display">{t("dispatcher.dashboard.todaysPlan")}</CardTitle>
             <Button
               size="sm"
               variant="ghost"
               className="text-xs"
               onClick={() => router.push("/dispatcher/planning")}
             >
-              Open <ArrowRight className="w-3 h-3 ml-1" />
+              {t("dispatcher.dashboard.open")} <ArrowRight className="w-3 h-3 ms-1" />
             </Button>
           </CardHeader>
           <CardContent>
@@ -114,11 +115,11 @@ export default function DispatcherDashboard() {
             ) : !todaysPlan ? (
               <EmptyState
                 icon={RouteIcon}
-                title="No plan for today yet"
-                description="Create an empty plan or run the optimizer to generate one."
+                title={t("dispatcher.dashboard.noPlanYet")}
+                description={t("dispatcher.dashboard.createOrRunOptimizer")}
                 action={
                   <Button size="sm" onClick={() => router.push("/dispatcher/planning")}>
-                    Open planning workspace
+                    {t("dispatcher.dashboard.openPlanningWorkspace")}
                   </Button>
                 }
               />
@@ -134,21 +135,21 @@ export default function DispatcherDashboard() {
                   >
                     {todaysPlan.status === "published" ? (
                       <>
-                        <CheckCircle2 className="w-3 h-3 mr-1" /> Published
+                        <CheckCircle2 className="w-3 h-3 me-1" /> {t("status.published")}
                       </>
                     ) : (
-                      "Draft"
+                      t("status.draft")
                     )}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {todaysPlan.taskCount} tasks • {todaysPlan.routeCount} drivers
+                    {todaysPlan.taskCount} {t("dispatcher.dashboard.tasks")} • {todaysPlan.routeCount} {t("dispatcher.dashboard.drivers")}
                   </span>
                 </div>
                 {monitor && monitor.planId === todaysPlan.planId && (
                   <div className="grid grid-cols-3 gap-2 text-xs">
-                    <Tile label="Done" value={monitor.overview.completed} tone="success" />
-                    <Tile label="In Progress" value={monitor.overview.inProgress} tone="info" />
-                    <Tile label="Pending" value={monitor.overview.pending} />
+                    <Tile label={t("common.completed")} value={monitor.overview.completed} tone="success" />
+                    <Tile label={t("common.inProgress")} value={monitor.overview.inProgress} tone="info" />
+                    <Tile label={t("common.pending")} value={monitor.overview.pending} />
                   </div>
                 )}
               </div>
@@ -159,15 +160,14 @@ export default function DispatcherDashboard() {
         {/* Quick actions */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-display">Quick links</CardTitle>
+            <CardTitle className="text-base font-display">{t("dispatcher.dashboard.quickLinks")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             {[
-              { label: "Live map", icon: MapIcon, href: "/dispatcher/map" },
-              { label: "Live monitor", icon: Clock, href: "/dispatcher/monitor" },
-              { label: "Planning workspace", icon: RouteIcon, href: "/dispatcher/planning" },
-              { label: "Tasks", icon: ClipboardList, href: "/dispatcher/tasks" },
-              { label: "Driver availability", icon: Users, href: "/dispatcher/availability" },
+              { label: t("dispatcher.dashboard.operations"), icon: MapIcon, href: "/dispatcher/operations" },
+              { label: t("dispatcher.dashboard.planningWorkspace"), icon: RouteIcon, href: "/dispatcher/planning" },
+              { label: t("dispatcher.dashboard.tasksPage"), icon: ClipboardList, href: "/dispatcher/tasks" },
+              { label: t("dispatcher.dashboard.driversPage"), icon: Users, href: "/dispatcher/availability" },
             ].map((q) => (
               <button
                 key={q.href}
@@ -187,7 +187,7 @@ export default function DispatcherDashboard() {
       {monitor && monitor.recentEvents.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-display">Recent activity</CardTitle>
+            <CardTitle className="text-base font-display">{t("dispatcher.dashboard.recentActivity")}</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-1">

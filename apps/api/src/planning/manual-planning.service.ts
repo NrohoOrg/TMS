@@ -20,19 +20,28 @@ import { ListPlansQueryDto } from './dto/list-plans-query.dto';
 import { MoveStopDto } from './dto/move-stop.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { UpdateStopDto } from './dto/update-stop.dto';
+import {
+  findFirstExecutedStopIndex,
+  findLastExecutedStopIndex,
+  isStopDispatcherCancelled,
+  isStopFrozen,
+} from './frozen-plan.helpers';
 import { PlanDetailsResponse, PlanningService } from './planning.service';
 
 type StopForRecalc = {
   id: string;
   sequence: number;
   type: StopType;
+  status: StopStatus;
+  etaS: number;
+  departureS: number;
+  actualArrivalS: number | null;
   task: {
     pickupLat: number;
     pickupLng: number;
     dropoffLat: number;
     dropoffLng: number;
     pickupServiceMinutes: number;
-    dropoffServiceMinutes: number;
   };
 };
 
@@ -260,7 +269,6 @@ export class ManualPlanningService {
         id: true,
         status: true,
         pickupServiceMinutes: true,
-        dropoffServiceMinutes: true,
       },
     });
     if (!task) throw new NotFoundException('Task not found');
@@ -379,7 +387,20 @@ export class ManualPlanningService {
       },
     });
     if (!stop) throw new NotFoundException('Stop not found');
-    if (stop.route.plan.status === PlanStatus.published && dto.locked === undefined && dto.notes === undefined) {
+
+    // v1.1 R1.2 — frozen plan invariant.
+    // - On a published plan, only `locked` and `notes` were already allowed.
+    //   That gate is preserved.
+    // - In addition, a stop whose execution has started (status != pending)
+    //   is "frozen": dispatcher can still toggle the `locked` flag (defensive
+    //   pre-R1.5 setup) and edit `notes`, but cannot override the ETA.
+    const stopFrozen = isStopFrozen(stop);
+    const planPublished = stop.route.plan.status === PlanStatus.published;
+    if (
+      planPublished &&
+      dto.locked === undefined &&
+      dto.notes === undefined
+    ) {
       throw new ConflictException('Plan is published');
     }
 
@@ -389,6 +410,11 @@ export class ManualPlanningService {
     if (dto.etaSecondsOverride !== undefined) {
       if (stop.route.plan.status !== PlanStatus.draft) {
         throw new ConflictException('ETA can only be overridden for draft plans');
+      }
+      if (stopFrozen) {
+        throw new ConflictException(
+          'Cannot override ETA on a stop whose execution has started',
+        );
       }
       data.etaS = dto.etaSecondsOverride;
     }
@@ -515,6 +541,16 @@ export class ManualPlanningService {
 
   /* ─────────────── Recalculate ─────────────── */
 
+  /**
+   * v1.1 R1.3 — public entry point used by the incidents flow to
+   * recalculate a route's downstream ETAs after pending stops have been
+   * released. Defers to the same private routine used by manual edits;
+   * frozen-prefix handling lives in `recalculateRoute` itself (R1.2).
+   */
+  async recalculateRouteForIncidents(routeId: string): Promise<RecalcResult> {
+    return this.recalculateRoute(routeId);
+  }
+
   async recalculatePlan(planId: string, currentUser: AuthenticatedUser): Promise<PlanDetailsResponse> {
     const plan = await this.prisma.plan.findUnique({
       where: { id: planId },
@@ -555,7 +591,6 @@ export class ManualPlanningService {
         dropoffAddress: true,
         dropoffLat: true,
         dropoffLng: true,
-        dropoffDeadline: true,
         priority: true,
         notes: true,
       },
@@ -576,7 +611,14 @@ export class ManualPlanningService {
         driver: { select: { shiftStart: true, depotLat: true, depotLng: true } },
         stops: {
           orderBy: { sequence: 'asc' },
-          include: {
+          select: {
+            id: true,
+            sequence: true,
+            type: true,
+            status: true,
+            etaS: true,
+            departureS: true,
+            actualArrivalS: true,
             task: {
               select: {
                 pickupLat: true,
@@ -584,7 +626,6 @@ export class ManualPlanningService {
                 dropoffLat: true,
                 dropoffLng: true,
                 pickupServiceMinutes: true,
-                dropoffServiceMinutes: true,
               },
             },
           },
@@ -599,27 +640,71 @@ export class ManualPlanningService {
     });
     const speedKmh = config?.speedKmh ?? 40;
 
-    const stops = route.stops as unknown as StopForRecalc[];
+    const stops = route.stops as StopForRecalc[];
 
-    const startSeconds = this.parseShiftStartSeconds(route.driver.shiftStart);
-    let prevLat = route.driver.depotLat;
-    let prevLng = route.driver.depotLng;
-    let cursorSeconds = startSeconds;
+    // v1.1 R1.2/R1.4 — anchor downstream recomputation at the last
+    // EXECUTED stop. Dispatcher-cancelled stops (skipped without
+    // actualArrivalS) are bypassed in both anchor selection and the
+    // iteration: they are phantom positions the driver never visited,
+    // so they must not contribute travel distance or time.
+    const lastExecutedIndex = findLastExecutedStopIndex(stops);
+
+    let prevLat: number;
+    let prevLng: number;
+    let cursorSeconds: number;
+    let startSeconds: number;
+    let firstWritableIndex: number;
     let totalDistanceM = 0;
+
+    if (lastExecutedIndex >= 0) {
+      const anchor = stops[lastExecutedIndex];
+      const anchorLatLng =
+        anchor.type === StopType.pickup
+          ? { lat: anchor.task.pickupLat, lng: anchor.task.pickupLng }
+          : { lat: anchor.task.dropoffLat, lng: anchor.task.dropoffLng };
+      prevLat = anchorLatLng.lat;
+      prevLng = anchorLatLng.lng;
+      cursorSeconds = anchor.departureS;
+      const firstExecuted = stops[findFirstExecutedStopIndex(stops)];
+      startSeconds = firstExecuted.actualArrivalS ?? firstExecuted.etaS;
+      firstWritableIndex = lastExecutedIndex + 1;
+    } else {
+      startSeconds = this.parseShiftStartSeconds(route.driver.shiftStart);
+      prevLat = route.driver.depotLat;
+      prevLng = route.driver.depotLng;
+      cursorSeconds = startSeconds;
+      firstWritableIndex = 0;
+    }
 
     for (let i = 0; i < stops.length; i += 1) {
       const stop = stops[i];
+
+      // Dispatcher-cancelled phantom: bypass entirely. The stop keeps its
+      // existing (now-stale) etaS/departureS — that's fine because the
+      // driver will never arrive there. Trajectory is not advanced.
+      if (isStopDispatcherCancelled(stop)) {
+        continue;
+      }
+
       const { lat, lng } = stop.type === StopType.pickup
         ? { lat: stop.task.pickupLat, lng: stop.task.pickupLng }
         : { lat: stop.task.dropoffLat, lng: stop.task.dropoffLng };
+
+      if (i < firstWritableIndex) {
+        // Executed prefix — keep stored values, just account for distance.
+        const distanceM = haversineMeters(prevLat, prevLng, lat, lng);
+        totalDistanceM += distanceM;
+        prevLat = lat;
+        prevLng = lng;
+        continue;
+      }
 
       const distanceM = haversineMeters(prevLat, prevLng, lat, lng);
       const travelS = distanceM > 0 ? Math.max(1, Math.round(distanceM / ((speedKmh * 1000) / 3600))) : 0;
 
       cursorSeconds += travelS;
       const etaS = cursorSeconds;
-      const serviceS =
-        (stop.type === StopType.pickup ? stop.task.pickupServiceMinutes : stop.task.dropoffServiceMinutes) * 60;
+      const serviceS = stop.type === StopType.pickup ? stop.task.pickupServiceMinutes * 60 : 0;
       cursorSeconds += serviceS;
       const departureS = cursorSeconds;
 

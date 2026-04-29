@@ -12,6 +12,7 @@ import { MapView, MapLegend, getDriverColor, type MapMarker, type MapRoute } fro
 import { useDrivers, usePlan, useMonitor } from "@/features/shared/hooks";
 import type { LatLng } from "@/lib/osrm";
 import { Map as MapIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export default function DispatcherGlobalMap({ readOnly }: Props) {
+  const { t } = useTranslation();
   const [date, setDate] = useState(todayStr());
   const [filterDriverId, setFilterDriverId] = useState<string | null>(null);
 
@@ -36,17 +38,23 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
   const markers: MapMarker[] = useMemo(() => {
     if (!plan) return [];
     const out: MapMarker[] = [];
+    // Dedupe depot pins (drivers share a single shared depot).
+    const depotsSeen = new Set<string>();
     plan.routes.forEach((route, rIdx) => {
       if (filterDriverId && route.driverId !== filterDriverId) return;
       const driver = drivers.find((d) => d.id === route.driverId);
       if (driver) {
-        out.push({
-          id: `depot-${driver.id}`,
-          position: [driver.depotLat, driver.depotLng],
-          kind: "depot",
-          label: "🏠",
-          popup: driver.name,
-        });
+        const key = `${driver.depotLat.toFixed(5)},${driver.depotLng.toFixed(5)}`;
+        if (!depotsSeen.has(key)) {
+          depotsSeen.add(key);
+          out.push({
+            id: `depot-${key}`,
+            position: [driver.depotLat, driver.depotLng],
+            kind: "depot",
+            label: "🏠",
+            popup: "Ministère des Startups",
+          });
+        }
       }
       route.stops.forEach((s, sIdx) => {
         const lat = s.type === "pickup" ? s.task.pickupLat : s.task.dropoffLat;
@@ -93,11 +101,11 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
   return (
     <div className="p-6 space-y-4">
       <PageHeader
-        title={readOnly ? "System-wide Live Map" : "Live Map"}
-        subtitle="Published plan visualization across all drivers."
+        title={readOnly ? t("admin.map.title") : t("admin.map.title")}
+        subtitle={t("admin.map.subtitle")}
         actions={
           <div className="flex items-center gap-2">
-            <Label className="text-xs">Date</Label>
+            <Label className="text-xs">{t("common.date")}</Label>
             <Input
               type="date"
               value={date}
@@ -117,7 +125,7 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
             className="text-xs h-7"
             onClick={() => setFilterDriverId(null)}
           >
-            All ({plan.routes.length})
+            {t("common.all")} ({plan.routes.length})
           </Button>
           {plan.routes.map((r, idx) => (
             <Button
@@ -128,11 +136,11 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
               onClick={() => setFilterDriverId(r.driverId === filterDriverId ? null : r.driverId)}
             >
               <span
-                className="inline-block h-2 w-2 rounded-full mr-1"
+                className="inline-block h-2 w-2 rounded-full me-1"
                 style={{ backgroundColor: getDriverColor(idx) }}
               />
               {r.driverName}
-              <Badge variant="outline" className="ml-1.5 text-[9px]">
+              <Badge variant="outline" className="ms-1.5 text-[9px]">
                 {r.stops.length}
               </Badge>
             </Button>
@@ -146,8 +154,8 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
             <div className="p-6 h-[500px] flex items-center justify-center">
               <EmptyState
                 icon={MapIcon}
-                title="No published plan for this date"
-                description="Create and publish a plan in the Planning workspace."
+                title={t("dispatcher.operations.noPublishedPlan")}
+                description={t("dispatcher.operations.runOptimizerHint")}
               />
             </div>
           ) : (
@@ -158,10 +166,10 @@ export default function DispatcherGlobalMap({ readOnly }: Props) {
                 height={600}
                 fitBoundsKey={`${plan.planId}-${filterDriverId ?? "all"}`}
               />
-              <div className="absolute bottom-3 left-3 z-[400]">
+              <div className="absolute bottom-3 start-3 z-[400]">
                 <MapLegend
                   items={[
-                    { color: "#1f2937", label: "Depot" },
+                    { color: "#1f2937", label: "Ministère" },
                     { color: "#2265c3", label: "Pickup" },
                     { color: "#0d9488", label: "Dropoff" },
                     { color: "#10b981", label: "Done" },

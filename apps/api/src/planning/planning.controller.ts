@@ -64,4 +64,18 @@ export class PlanningController {
   publish(@Param('planId') planId: string): Promise<PublishPlanResponse> {
     return this.planningService.publishPlan(planId);
   }
+
+  @Post('sms/test')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send a test SMS to the configured test number' })
+  @ApiResponse({ status: 200, description: 'Test SMS dispatch result' })
+  testSms(): Promise<{
+    success: boolean;
+    code: string | null;
+    messageId: string | null;
+    providerResponse: string;
+    destination: string;
+  }> {
+    return this.planningService.sendTestSms();
+  }
 }

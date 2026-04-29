@@ -7,6 +7,7 @@ import {
   getPlans,
   listPlansFiltered,
   publishPlan,
+  sendTestSms,
   triggerOptimize,
 } from "@/lib/api-services";
 
@@ -60,5 +61,11 @@ export function usePublishPlan() {
   return useMutation({
     mutationFn: (planId: string) => publishPlan(planId),
     onSuccess: () => qc.invalidateQueries({ queryKey: PLANS_KEY }),
+  });
+}
+
+export function useSendTestSms() {
+  return useMutation({
+    mutationFn: () => sendTestSms(),
   });
 }

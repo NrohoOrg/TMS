@@ -31,6 +31,7 @@ import {
 import { MapView, MapLegend, type MapMarker, type MapRoute } from "@/components/map";
 import type { LatLng } from "@/lib/osrm";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -45,6 +46,7 @@ function secondsToHHMM(s: number): string {
 export default function DriverDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { t: tFn, i18n } = useTranslation();
   const today = todayStr();
   const [date, setDate] = useState(today);
 
@@ -118,11 +120,11 @@ export default function DriverDashboard() {
   async function handleStatus(stopId: string, status: "arrived" | "done" | "skipped") {
     try {
       await updateStop.mutateAsync({ stopId, status });
-      toast({ title: `Stop marked ${status}` });
+      toast({ title: tFn("driver.stopMarkedAs", { status: tFn(`status.${status}`) }) });
     } catch (err) {
       toast({
-        title: "Update failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: tFn("common.updateFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -135,14 +137,14 @@ export default function DriverDashboard() {
   const pct = total > 0 ? (completed / total) * 100 : 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title={user?.name ? `Hi, ${user.name.split(" ")[0]}` : "My Route"}
-        subtitle={`Showing route for ${new Date(date).toLocaleDateString(undefined, {
+        title={user?.name ? `${user.name.split(" ")[0]} — ${tFn("driver.title")}` : tFn("driver.title")}
+        subtitle={new Date(date).toLocaleDateString(i18n.language, {
           weekday: "long",
           day: "numeric",
           month: "long",
-        })}`}
+        })}
         actions={
           <input
             type="date"
@@ -154,30 +156,30 @@ export default function DriverDashboard() {
       />
 
       {isError ? (
-        <ErrorState message="Unable to load your route." onRetry={() => monitorQuery.refetch()} />
+        <ErrorState message={tFn("driver.unableToLoad")} onRetry={() => monitorQuery.refetch()} />
       ) : isLoading ? (
         <Skeleton className="h-96 w-full" />
       ) : !myRoute || !monitorQuery.data?.planId ? (
         <EmptyState
           icon={RouteIcon}
-          title="No route assigned"
-          description="No published plan for this date includes you. Check back later or ask the dispatcher."
+          title={tFn("driver.noRoute")}
+          description={tFn("driver.noRouteHint")}
         />
       ) : (
         <>
           <Card>
             <CardContent className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Tile label="Stops" value={String(total)} icon={MapPin} />
-              <Tile label="Completed" value={String(completed)} icon={CheckCircle2} tone="success" />
-              <Tile label="Distance" value={`${myRoute.totalDistanceKm.toFixed(1)}km`} icon={NavIcon} />
-              <Tile label="Duration" value={`${myRoute.totalTimeMinutes.toFixed(0)}m`} icon={Clock} />
+              <Tile label={tFn("driver.stops")} value={String(total)} icon={MapPin} />
+              <Tile label={tFn("driver.completed")} value={String(completed)} icon={CheckCircle2} tone="success" />
+              <Tile label={tFn("driver.distance")} value={`${myRoute.totalDistanceKm.toFixed(1)}km`} icon={NavIcon} />
+              <Tile label={tFn("driver.duration")} value={`${myRoute.totalTimeMinutes.toFixed(0)}m`} icon={Clock} />
             </CardContent>
           </Card>
 
           <Card className="overflow-hidden">
             <CardContent className="p-0 relative">
               <MapView markers={markers} routes={routes} height={400} />
-              <div className="absolute bottom-3 left-3 z-[400]">
+              <div className="absolute bottom-3 start-3 z-[400]">
                 <MapLegend
                   items={[
                     { color: "#1f2937", label: "Depot" },
@@ -193,7 +195,7 @@ export default function DriverDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-display flex items-center justify-between">
-                <span>Today&apos;s stops</span>
+                <span>{tFn("driver.todaysStops")}</span>
                 <Progress value={pct} className="h-1.5 w-32" />
               </CardTitle>
             </CardHeader>
@@ -235,13 +237,13 @@ export default function DriverDashboard() {
                             </span>
                           </div>
                           <Badge variant="outline" className="text-[10px]">
-                            {s.status}
+                            {tFn(`status.${s.status}`)}
                           </Badge>
                         </div>
                         <div className="text-xs text-muted-foreground">{address}</div>
                         <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-1">
                           <Clock className="w-3 h-3" />
-                          ETA {secondsToHHMM(s.etaSeconds)}
+                          {tFn("driver.eta")} {secondsToHHMM(s.etaSeconds)}
                           {lat != null && lng != null && (
                             <a
                               href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`}
@@ -249,7 +251,7 @@ export default function DriverDashboard() {
                               rel="noopener noreferrer"
                               className="text-primary inline-flex items-center gap-0.5 hover:underline"
                             >
-                              Open in OSM
+                              {tFn("driver.openInMaps")}
                               <ExternalLink className="w-2.5 h-2.5" />
                             </a>
                           )}
@@ -263,7 +265,7 @@ export default function DriverDashboard() {
                               onClick={() => handleStatus(s.stopId, "arrived")}
                               disabled={updateStop.isPending}
                             >
-                              I&apos;ve arrived
+                              {tFn("driver.markArrived")}
                             </Button>
                           )}
                           {s.status === "arrived" && (
@@ -273,7 +275,7 @@ export default function DriverDashboard() {
                               onClick={() => handleStatus(s.stopId, "done")}
                               disabled={updateStop.isPending}
                             >
-                              <CheckCircle2 className="w-3 h-3 mr-1" /> Done
+                              <CheckCircle2 className="w-3 h-3 me-1" /> {tFn("driver.done")}
                             </Button>
                           )}
                           {s.status !== "done" && s.status !== "skipped" && (
@@ -284,7 +286,7 @@ export default function DriverDashboard() {
                               onClick={() => handleStatus(s.stopId, "skipped")}
                               disabled={updateStop.isPending}
                             >
-                              Skip
+                              {tFn("driver.markSkipped")}
                             </Button>
                           )}
                         </div>
@@ -302,9 +304,9 @@ export default function DriverDashboard() {
                 <Phone className="w-3 h-3" />
                 Dispatcher: contact via your supervisor.
                 {updateStop.isPending && (
-                  <span className="inline-flex items-center gap-1 ml-auto">
+                  <span className="inline-flex items-center gap-1 ms-auto">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Updating…
+                    {tFn("common.loading")}
                   </span>
                 )}
               </CardContent>

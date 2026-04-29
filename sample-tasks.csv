@@ -1,0 +1,6 @@
+title,pickupAddress,pickupLat,pickupLng,pickupWindowStart,dropoffAddress,dropoffLat,dropoffLng,priority,notes
+Deliver package A,"Algiers Central, Algeria",36.7538,3.0588,2026-04-25T08:00:00Z,"Bab Ezzouar, Algeria",36.7225,3.1859,high,Fragile - handle with care
+Deliver package B,"Hydra, Algiers",36.7460,3.0410,2026-04-25T08:30:00Z,"Kouba, Algiers",36.7250,3.0860,normal,
+Urgent medical supplies,"El Biar, Algiers",36.7700,3.0290,2026-04-25T09:00:00Z,"CHU Mustapha, Algiers",36.7510,3.0680,urgent,Cold chain required
+Furniture pickup,"Bordj El Kiffan, Algiers",36.7510,3.1900,2026-04-25T10:00:00Z,"Cheraga, Algiers",36.7670,2.9610,low,Bulky items
+Restaurant supply,"Bab El Oued, Algiers",36.7900,3.0440,2026-04-25T07:00:00Z,"Rouiba, Algiers",36.7370,3.2870,normal,Refrigerated

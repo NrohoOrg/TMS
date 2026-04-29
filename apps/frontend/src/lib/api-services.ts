@@ -4,6 +4,7 @@ import type {
   AdminHealth,
   AdminUser,
   AvailabilityRow,
+  CadreTaskView,
   Driver,
   GeocodeResult,
   JobStatusResponse,
@@ -88,6 +89,20 @@ export const patchTask = (id: string, data: Partial<Task>) =>
   patch<Task>(`/dispatcher/tasks/${id}`, data);
 export const deleteTask = (id: string) =>
   del<{ deleted: boolean }>(`/dispatcher/tasks/${id}`);
+export const approveTask = (id: string) =>
+  post<Task>(`/dispatcher/tasks/${id}/approve`);
+export const rejectTask = (id: string) =>
+  post<Task>(`/dispatcher/tasks/${id}/reject`);
+
+/* ── cadre tasks (mounted at /cadre/tasks) ── */
+export const getMyCadreTasks = () => get<CadreTaskView[]>(`/cadre/tasks/mine`);
+export const createCadreTask = (data: Partial<Task>) =>
+  post<Task>(`/cadre/tasks`, data);
+export const patchCadreTask = (id: string, data: Partial<Task>) =>
+  patch<Task>(`/cadre/tasks/${id}`, data);
+export const deleteCadreTask = (id: string) =>
+  del<void>(`/cadre/tasks/${id}`);
+
 export const importTasks = (file: File) => {
   const form = new FormData();
   form.append("file", file);
@@ -112,6 +127,97 @@ export const patchAvailability = (
   },
 ) => patch<AvailabilityRow>(`/dispatcher/availability/${driverId}`, data);
 
+/* ── incidents (mounted at /dispatcher/incidents) ── v1.1 R1.3+ */
+
+export interface DriverUnavailablePreview {
+  driverId: string;
+  driverName: string;
+  date: string;
+  publishedPlanId: string | null;
+  affectedTasks: Array<{
+    taskId: string;
+    title: string;
+    pickupAddress: string;
+    dropoffAddress: string;
+    priority: string;
+    pickupSequence: number;
+  }>;
+  frozenStopsCount: number;
+}
+
+export interface DriverUnavailableResult {
+  driverId: string;
+  date: string;
+  shiftEndOverride: string;
+  releasedTaskIds: string[];
+  frozenStopsCount: number;
+}
+
+export const previewDriverUnavailable = (driverId: string, date?: string) =>
+  get<DriverUnavailablePreview>(
+    `/dispatcher/incidents/driver-unavailable/preview${qs({ driverId, date })}`,
+  );
+
+export const markDriverUnavailable = (data: {
+  driverId: string;
+  date: string;
+  fromTime: string;
+  toTime?: string;
+}) =>
+  post<DriverUnavailableResult>("/dispatcher/incidents/driver-unavailable", data);
+
+export interface MidDayAssignmentSummary {
+  taskId: string;
+  taskTitle: string;
+  driverId: string;
+  driverName: string;
+  /** Title of the existing stop the new pickup got inserted right after.
+   *  Null = added at the start of the driver's route. */
+  insertedAfterTaskTitle: string | null;
+  /** 1-based sequence the new pickup landed at. */
+  pickupSequence: number;
+}
+
+export interface MidDayResult {
+  date: string;
+  publishedPlanId: string | null;
+  assignedCount: number;
+  unassigned: Array<{ taskId: string; reason: string }>;
+  affectedDriverIds: string[];
+  assignments: MidDayAssignmentSummary[];
+  /** True when the API ran in preview mode and DID NOT persist anything. */
+  dryRun: boolean;
+}
+
+export const runMidDayReoptimization = (date?: string, dryRun?: boolean) =>
+  post<MidDayResult>("/dispatcher/incidents/run-midday", { date, dryRun });
+
+export interface UrgentInterruptViolation {
+  stopId: string;
+  taskId: string;
+  type: "pickup" | "dropoff" | "shift";
+  taskTitle: string | null;
+  newEtaS: number;
+  latestAllowedS: number;
+  delaySeconds: number;
+}
+
+export interface UrgentInterruptResult {
+  taskId: string;
+  driverId: string;
+  driverName: string;
+  insertedAtSequence: number;
+  fromDepot: boolean;
+  distanceM: number;
+  violations: UrgentInterruptViolation[];
+}
+
+export const runUrgentInterrupt = (taskId: string, date?: string) =>
+  post<UrgentInterruptResult>("/dispatcher/incidents/urgent-interrupt", {
+    taskId,
+    date,
+  });
+
 /* ── planning (optimizer-driven, mounted at /dispatcher/planning) ── */
 
 export const triggerOptimize = (data: { date: string; returnToDepot?: boolean }) =>
@@ -132,6 +238,15 @@ export const publishPlan = (planId: string) =>
   post<{ planId: string; status: string; publishedAt: string; notifiedDrivers: number }>(
     `/dispatcher/planning/plans/${planId}/publish`,
   );
+
+export const sendTestSms = () =>
+  post<{
+    success: boolean;
+    code: string | null;
+    messageId: string | null;
+    providerResponse: string;
+    destination: string;
+  }>("/dispatcher/planning/sms/test");
 
 /* ── manual planning (the new endpoints) ── */
 
@@ -191,6 +306,25 @@ export const removeStopFromRoute = (stopId: string) =>
 export const getMonitor = (date?: string) =>
   get<MonitorResponse>(`/dispatcher/monitor${qs({ date })}`);
 
+export interface ImpactSummary {
+  date: string;
+  hasPlan: boolean;
+  tasksCompleted: number;
+  tasksAssigned: number;
+  driversActive: number;
+  unassignedCount: number;
+  optimizedDistanceKm: number;
+  naiveBaselineKm: number;
+  kmSaved: number;
+  savingsPercent: number;
+  co2KgSaved: number;
+  fuelLitersSaved: number;
+  dieselCostSavedDZD: number;
+}
+
+export const getImpact = (date?: string) =>
+  get<ImpactSummary>(`/dispatcher/impact${qs({ date })}`);
+
 export const getReports = (params?: {
   period?: "1d" | "7d" | "30d";
   startDate?: string;
@@ -219,3 +353,6 @@ export const updateStopStatus = (
 
 export const geocodeSearch = (query: string, limit = 5) =>
   get<GeocodeResult[]>(`/geocode/search${qs({ q: query, limit })}`);
+
+export const geocodeResolve = (placeId: string) =>
+  get<{ lat: number; lng: number } | null>(`/geocode/resolve${qs({ placeId })}`);

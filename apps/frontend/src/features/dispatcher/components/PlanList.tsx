@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  CalendarPlus,
   CheckCircle2,
   ClipboardList,
   Loader2,
@@ -15,13 +14,13 @@ import { cn } from "@/lib/utils";
 import { useDeletePlan } from "@/features/shared/hooks/useManualPlanning";
 import { useToast } from "@/hooks/use-toast";
 import type { PlanListItem } from "@/types/api";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   plans: PlanListItem[] | undefined;
   isLoading: boolean;
   selectedPlanId: string | null;
   onSelect: (planId: string) => void;
-  onCreate: () => void;
   onOptimize: () => void;
 }
 
@@ -30,22 +29,22 @@ export function PlanList({
   isLoading,
   selectedPlanId,
   onSelect,
-  onCreate,
   onOptimize,
 }: Props) {
   const deleteMut = useDeletePlan();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   async function handleDelete(planId: string, e: React.MouseEvent) {
     e.stopPropagation();
     if (!confirm("Discard this draft plan?")) return;
     try {
       await deleteMut.mutateAsync(planId);
-      toast({ title: "Plan discarded" });
+      toast({ title: t("common.delete") });
     } catch (err) {
       toast({
-        title: "Delete failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.deleteFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -55,23 +54,18 @@ export function PlanList({
     <div className="flex flex-col h-full">
       <div className="border-b border-border p-3 space-y-2">
         <div className="text-xs uppercase tracking-wider text-muted-foreground font-display font-semibold">
-          Plans
+          {t("admin.dashboard.plans")}
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={onCreate}>
-            <CalendarPlus className="w-3 h-3 mr-1" /> New draft
-          </Button>
-          <Button size="sm" className="flex-1 text-xs" onClick={onOptimize}>
-            ✨ Run optimizer
-          </Button>
-        </div>
+        <Button size="sm" className="w-full text-xs" onClick={onOptimize}>
+          ✨ {t("dispatcher.planning.runOptimizer")}
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {isLoading ? (
           <Skeleton className="h-32 w-full" />
         ) : !plans || plans.length === 0 ? (
           <div className="text-xs text-muted-foreground p-4 text-center">
-            No plans yet. Create a draft or run the optimizer.
+            {t("dispatcher.planning.noPlansForDate")}
           </div>
         ) : (
           plans.map((p) => {
@@ -102,20 +96,20 @@ export function PlanList({
                   <div className="flex items-center gap-1">
                     {p.status === "published" ? (
                       <Badge className="text-[9px] bg-tms-success-light text-tms-success-dark">
-                        <CheckCircle2 className="w-2.5 h-2.5 mr-0.5" />
-                        published
+                        <CheckCircle2 className="w-2.5 h-2.5 me-0.5" />
+                        {t("status.published")}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[9px]">
-                        draft
+                        {t("status.draft")}
                       </Badge>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <ClipboardList className="w-2.5 h-2.5" /> {p.taskCount} tasks •{" "}
-                    {p.routeCount} drivers
+                    <ClipboardList className="w-2.5 h-2.5" /> {p.taskCount} {t("dispatcher.dashboard.tasks")} •{" "}
+                    {p.routeCount} {t("dispatcher.dashboard.drivers")}
                   </span>
                   {p.status === "draft" && (
                     <button

@@ -1,5 +1,5 @@
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://172.20.10.2:3001/api";
 
 // ---------------------------------------------------------------------------
 // Token helpers
@@ -111,14 +111,18 @@ async function request<T>(
     throw new Error("Session expired");
   }
 
-  // Try to parse the body regardless of status code so we can surface
-  // a meaningful error message from the API.
+  // 204 No Content: success with empty body — never try to parse it.
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  // Try to parse the body so we can surface a meaningful error message.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let body: any;
   try {
     body = await res.json();
   } catch {
-    body = { success: false, data: null, error: res.statusText };
+    body = res.ok ? {} : { error: res.statusText };
   }
 
   if (!res.ok || body.success === false) {

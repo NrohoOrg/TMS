@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Priority } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateTaskDto {
   @ApiProperty({ example: 'Pickup shipment A1' })
@@ -32,17 +32,6 @@ export class CreateTaskDto {
   @IsDateString()
   pickupWindowStart!: string;
 
-  @ApiProperty({ example: '2026-03-04T10:00:00.000Z' })
-  @IsDateString()
-  pickupWindowEnd!: string;
-
-  @ApiPropertyOptional({ example: 0, default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  pickupServiceMinutes: number = 0;
-
   @ApiProperty({ example: 'Rue Hassiba Ben Bouali, Alger' })
   @IsString()
   @MinLength(1)
@@ -61,17 +50,6 @@ export class CreateTaskDto {
   @Min(-180)
   @Max(180)
   dropoffLng!: number;
-
-  @ApiProperty({ example: '2026-03-04T14:00:00.000Z' })
-  @IsDateString()
-  dropoffDeadline!: string;
-
-  @ApiPropertyOptional({ example: 0, default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  dropoffServiceMinutes: number = 0;
 
   @ApiPropertyOptional({ enum: Priority, default: Priority.normal })
   @IsOptional()

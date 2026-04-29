@@ -46,6 +46,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Driver, PlanDetails, PlanStop, Task } from "@/types/api";
 import { getDriverColor } from "@/components/map";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   plan: PlanDetails;
@@ -69,6 +70,7 @@ interface SortableStopProps {
 }
 
 function SortableStop({ stop, routeId, index, onLockToggle, onDelete }: SortableStopProps) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: stop.stopId,
@@ -86,7 +88,7 @@ function SortableStop({ stop, routeId, index, onLockToggle, onDelete }: Sortable
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-xs",
+        "flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5 text-xs min-w-0",
         stop.locked && "bg-muted/40",
       )}
     >
@@ -114,14 +116,14 @@ function SortableStop({ stop, routeId, index, onLockToggle, onDelete }: Sortable
       <button
         onClick={onLockToggle}
         className="text-muted-foreground hover:text-foreground"
-        title={stop.locked ? "Unlock" : "Lock"}
+        title={stop.locked ? t("dispatcher.planning.unlockStop") : t("dispatcher.planning.lockStop")}
       >
         {stop.locked ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}
       </button>
       <button
         onClick={onDelete}
         className="text-muted-foreground hover:text-tms-error"
-        title="Remove"
+        title={t("common.delete")}
       >
         <Trash2 className="w-3 h-3" />
       </button>
@@ -130,6 +132,7 @@ function SortableStop({ stop, routeId, index, onLockToggle, onDelete }: Sortable
 }
 
 export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
+  const { t } = useTranslation();
   const isDraft = plan.status === "draft";
   const { toast } = useToast();
 
@@ -160,12 +163,12 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
     if (!selectedDriverToAdd) return;
     try {
       await addRoute.mutateAsync({ driverId: selectedDriverToAdd });
-      toast({ title: "Driver added" });
+      toast({ title: t("admin.drivers.driverCreated") });
       setSelectedDriverToAdd("");
     } catch (err) {
       toast({
-        title: "Add failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.createFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -175,11 +178,11 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
     if (!confirm("Remove this driver and free their tasks?")) return;
     try {
       await removeRoute.mutateAsync(routeId);
-      toast({ title: "Driver removed" });
+      toast({ title: t("admin.drivers.driverRemoved") });
     } catch (err) {
       toast({
-        title: "Remove failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.deleteFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -188,12 +191,12 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
   async function handleAddTask(routeId: string, taskId: string) {
     try {
       await addTask.mutateAsync({ routeId, taskId });
-      toast({ title: "Task assigned" });
+      toast({ title: t("status.assigned") });
       setTaskToAdd((p) => ({ ...p, [routeId]: "" }));
     } catch (err) {
       toast({
-        title: "Assign failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.updateFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -207,8 +210,8 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
       });
     } catch (err) {
       toast({
-        title: "Update failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.updateFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -218,11 +221,11 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
     if (!confirm(`Remove ${stop.task.title} from this route?`)) return;
     try {
       await removeStop.mutateAsync(stop.stopId);
-      toast({ title: "Stop removed" });
+      toast({ title: t("common.delete") });
     } catch (err) {
       toast({
-        title: "Remove failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.deleteFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -262,8 +265,8 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
       });
     } catch (err) {
       toast({
-        title: "Move failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: t("common.updateFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
         variant: "destructive",
       });
     }
@@ -273,38 +276,40 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
   const driversWithoutRoutes = drivers.filter((d) => !driversWithRoutes.has(d.id) && d.active);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col lg:h-full lg:min-h-0">
       {isDraft && (
         <div className="border-b border-border p-3 space-y-2 bg-muted/20">
           <div className="text-xs font-display font-semibold uppercase tracking-wider text-muted-foreground">
-            Add Driver
+            {t("admin.drivers.addDriver")}
           </div>
-          <div className="flex gap-2">
-            <Select value={selectedDriverToAdd} onValueChange={setSelectedDriverToAdd}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="Pick a driver..." />
-              </SelectTrigger>
-              <SelectContent>
-                {driversWithoutRoutes.length === 0 ? (
-                  <div className="px-2 py-1 text-xs text-muted-foreground">
-                    All drivers assigned
-                  </div>
-                ) : (
-                  driversWithoutRoutes.map((d) => (
-                    <SelectItem key={d.id} value={d.id} className="text-xs">
-                      {d.name}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
+          <div className="flex gap-2 min-w-0">
+            <div className="flex-1 min-w-0">
+              <Select value={selectedDriverToAdd} onValueChange={setSelectedDriverToAdd}>
+                <SelectTrigger className="h-8 text-xs w-full">
+                  <SelectValue placeholder={t("dispatcher.incidents.pickADriver")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {driversWithoutRoutes.length === 0 ? (
+                    <div className="px-2 py-1 text-xs text-muted-foreground">
+                      {t("dispatcher.planning.assigned")}
+                    </div>
+                  ) : (
+                    driversWithoutRoutes.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-xs">
+                        {d.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               size="sm"
-              className="text-xs"
+              className="text-xs flex-shrink-0"
               onClick={handleAddRoute}
               disabled={!selectedDriverToAdd || addRoute.isPending}
             >
-              <UserCheck className="w-3 h-3 mr-1" /> Add
+              <UserCheck className="w-3 h-3 me-1" /> {t("common.add")}
             </Button>
           </div>
         </div>
@@ -316,10 +321,10 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        <div className="lg:flex-1 lg:overflow-y-auto p-2 space-y-2">
           {plan.routes.length === 0 ? (
             <div className="text-xs text-muted-foreground p-4 text-center">
-              No drivers assigned to this plan yet.
+              {t("dispatcher.operations.noDriversAssigned")}
             </div>
           ) : (
             plan.routes.map((route, idx) => {
@@ -329,9 +334,17 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
               const routeId = route.routeId ?? `${plan.planId}-${route.driverId}`;
               return (
                 <div key={route.driverId} className="border border-border rounded-md bg-background overflow-hidden">
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleExpand(route.driverId)}
-                    className="w-full flex items-center gap-2 px-2 py-2 hover:bg-muted/40"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleExpand(route.driverId);
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-2 py-2 hover:bg-muted/40 cursor-pointer"
                   >
                     <div
                       className="h-2.5 w-2.5 rounded-full flex-shrink-0"
@@ -342,12 +355,13 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
                         {driver?.name ?? route.driverName}
                       </div>
                       <div className="text-[10px] text-muted-foreground">
-                        {route.stops.length} stops • {route.totalTimeMinutes.toFixed(0)}min •{" "}
+                        {route.stops.length} {t("dispatcher.planning.stops")} • {route.totalTimeMinutes.toFixed(0)}min •{" "}
                         {route.totalDistanceKm.toFixed(1)}km
                       </div>
                     </div>
                     {isDraft && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleRemoveRoute(routeId);
@@ -358,12 +372,12 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
                       </button>
                     )}
                     {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
+                  </div>
                   {expanded && (
                     <div className="border-t border-border p-2 space-y-1.5">
                       {route.stops.length === 0 ? (
                         <div className="text-[10px] text-muted-foreground text-center py-2">
-                          No stops
+                          {t("dispatcher.planning.stops")}
                         </div>
                       ) : (
                         <SortableContext
@@ -391,12 +405,12 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
                             onValueChange={(v) => setTaskToAdd((p) => ({ ...p, [routeId]: v }))}
                           >
                             <SelectTrigger className="h-7 text-[11px]">
-                              <SelectValue placeholder="+ Add task" />
+                              <SelectValue placeholder={t("dispatcher.tasks.newTask")} />
                             </SelectTrigger>
                             <SelectContent>
                               {unassignedTasks.map((t) => (
                                 <SelectItem key={t.id} value={t.id} className="text-xs">
-                                  <Badge className="mr-1 text-[9px] capitalize" variant="outline">
+                                  <Badge className="me-1 text-[9px] capitalize" variant="outline">
                                     {t.priority}
                                   </Badge>
                                   {t.title}

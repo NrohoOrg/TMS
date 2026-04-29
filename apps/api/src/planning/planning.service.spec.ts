@@ -38,11 +38,18 @@ describe('PlanningService', () => {
     prisma.task.count.mockResolvedValue(2);
     prisma.driver.findMany.mockResolvedValue([{ id: 'driver-1' }]);
     prisma.availability.findMany.mockResolvedValue([]);
-    prisma.config.findUnique.mockResolvedValue({ maxSolveSeconds: 30, speedKmh: 40 });
+    prisma.config.findUnique.mockResolvedValue({ maxSolveSeconds: 30, speedKmh: 50 });
     prisma.optimizationJob.create.mockResolvedValue({ id: 'job-1' });
     optimizationQueue.add.mockResolvedValue(undefined);
 
-    service = new PlanningService(prisma as any, optimizationQueue as any);
+    const smsService = { send: jest.fn().mockResolvedValue({ success: true, code: '1701', messageId: 'x', providerResponse: 'ok' }) };
+    const configService = { get: jest.fn().mockReturnValue(undefined) };
+    service = new PlanningService(
+      prisma as any,
+      optimizationQueue as any,
+      smsService as any,
+      configService as any,
+    );
   });
 
   it('creates queued optimization job when inputs are valid', async () => {

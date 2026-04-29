@@ -19,6 +19,7 @@ import {
   useUpdateAvailability,
 } from "@/features/shared/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import {
   CalendarDays,
   ChevronLeft,
@@ -47,6 +48,7 @@ function DriverDayCell({
     shiftEndOverride?: string | null;
   }) => void;
 }) {
+  const { t } = useTranslation();
   const available = row?.available ?? true;
   const shiftStart = row?.shiftStartOverride ?? driver.shiftStart;
   const shiftEnd = row?.shiftEndOverride ?? driver.shiftEnd;
@@ -71,12 +73,12 @@ function DriverDayCell({
             />
             {hasOverride && (
               <Badge variant="outline" className="text-[9px] px-1 py-0">
-                ovr
+                {t("dispatcher.availability.shiftOverride")}
               </Badge>
             )}
           </div>
           <div className="text-[10px] text-foreground font-mono">
-            {available ? `${shiftStart}–${shiftEnd}` : "Off"}
+            {available ? `${shiftStart}–${shiftEnd}` : t("dispatcher.availability.off")}
           </div>
         </button>
       </Popover.Trigger>
@@ -95,7 +97,7 @@ function DriverDayCell({
               </p>
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor={`avail-${driver.id}-${isoDate(date)}`}>Available</Label>
+              <Label htmlFor={`avail-${driver.id}-${isoDate(date)}`}>{t("dispatcher.availability.available")}</Label>
               <Switch
                 id={`avail-${driver.id}-${isoDate(date)}`}
                 checked={available}
@@ -104,7 +106,7 @@ function DriverDayCell({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-[10px]">Shift Start</Label>
+                <Label className="text-[10px]">{t("dispatcher.availability.shiftStart")}</Label>
                 <Input
                   type="time"
                   defaultValue={shiftStart}
@@ -117,7 +119,7 @@ function DriverDayCell({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[10px]">Shift End</Label>
+                <Label className="text-[10px]">{t("dispatcher.availability.shiftEnd")}</Label>
                 <Input
                   type="time"
                   defaultValue={shiftEnd}
@@ -142,7 +144,7 @@ function DriverDayCell({
                   })
                 }
               >
-                Clear shift override
+                {t("dispatcher.availability.clearOverride")}
               </Button>
             )}
           </div>
@@ -155,6 +157,7 @@ function DriverDayCell({
 
 export default function DispatcherAvailability() {
   const { toast } = useToast();
+  const { t: tFn } = useTranslation();
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 }),
   );
@@ -202,18 +205,18 @@ export default function DispatcherAvailability() {
       });
     } catch (err) {
       toast({
-        title: "Update failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: tFn("common.updateFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title="Driver Availability"
-        subtitle="Toggle availability or set per-day shift overrides for the upcoming week."
+        title={tFn("dispatcher.availability.title")}
+        subtitle={tFn("dispatcher.availability.subtitle")}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -241,7 +244,7 @@ export default function DispatcherAvailability() {
                 setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
               }
             >
-              Today
+              {tFn("common.today")}
             </Button>
           </div>
         }
@@ -251,7 +254,7 @@ export default function DispatcherAvailability() {
         <CardContent className="p-4">
           {isError ? (
             <ErrorState
-              message="Unable to load availability data."
+              message={tFn("dispatcher.availability.noActiveDriversHint")}
               onRetry={() => driversQuery.refetch()}
             />
           ) : isLoading && drivers.length === 0 ? (
@@ -259,16 +262,16 @@ export default function DispatcherAvailability() {
           ) : drivers.length === 0 ? (
             <EmptyState
               icon={CalendarDays}
-              title="No active drivers"
-              description="Activate drivers in Admin → Drivers to schedule availability."
+              title={tFn("dispatcher.availability.noActiveDrivers")}
+              description={tFn("dispatcher.availability.noActiveDriversHint")}
             />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-separate border-spacing-1">
                 <thead>
                   <tr>
-                    <th className="text-left text-xs font-display text-muted-foreground pl-1 sticky left-0 bg-background z-10">
-                      Driver
+                    <th className="text-left text-xs font-display text-muted-foreground ps-1 sticky start-0 bg-background z-10">
+                      {tFn("admin.dashboard.drivers")}
                     </th>
                     {days.map((d) => (
                       <th
@@ -286,7 +289,7 @@ export default function DispatcherAvailability() {
                 <tbody>
                   {drivers.map((driver) => (
                     <tr key={driver.id}>
-                      <td className="pr-2 py-1 sticky left-0 bg-background z-10">
+                      <td className="pe-2 py-1 sticky start-0 bg-background z-10">
                         <div className="flex items-center gap-2">
                           <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
                             <span className="text-[10px] font-semibold text-primary">
@@ -332,7 +335,7 @@ export default function DispatcherAvailability() {
           {updateAvailability.isPending && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-3">
               <Loader2 className="w-3 h-3 animate-spin" />
-              Saving…
+              {tFn("common.loading")}
             </div>
           )}
         </CardContent>

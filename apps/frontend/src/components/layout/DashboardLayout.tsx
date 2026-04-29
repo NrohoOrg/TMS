@@ -8,66 +8,68 @@ import {
   LayoutDashboard,
   Users,
   UserCheck,
-  Settings,
   Activity,
   ClipboardList,
-  CalendarDays,
+  ListChecks,
   Route as RouteIcon,
-  Monitor,
-  BarChart3,
   MapPin,
   LogOut,
   Map as MapIcon,
+  AlertTriangle,
+  PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth-context";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitch } from "@/i18n/LanguageSwitch";
 
-type UserRole = "admin" | "dispatcher" | "driver";
+type UserRole = "admin" | "dispatcher" | "driver" | "cadre";
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   path: string;
   icon: React.ElementType;
 }
 
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   admin: [
-    { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-    { label: "Live Map", path: "/admin/map", icon: MapIcon },
-    { label: "Users", path: "/admin/users", icon: Users },
-    { label: "Drivers", path: "/admin/drivers", icon: UserCheck },
-    { label: "Configuration", path: "/admin/config", icon: Settings },
-    { label: "System Health", path: "/admin/health", icon: Activity },
+    { labelKey: "nav.dashboard", path: "/admin", icon: LayoutDashboard },
+    { labelKey: "nav.liveMap", path: "/admin/map", icon: MapIcon },
+    { labelKey: "nav.users", path: "/admin/users", icon: Users },
+    { labelKey: "nav.drivers", path: "/admin/drivers", icon: UserCheck },
+    { labelKey: "nav.systemHealth", path: "/admin/health", icon: Activity },
   ],
   dispatcher: [
-    { label: "Dashboard", path: "/dispatcher", icon: LayoutDashboard },
-    { label: "Tasks", path: "/dispatcher/tasks", icon: ClipboardList },
-    { label: "Availability", path: "/dispatcher/availability", icon: CalendarDays },
-    { label: "Planning", path: "/dispatcher/planning", icon: RouteIcon },
-    { label: "Live Map", path: "/dispatcher/map", icon: MapIcon },
-    { label: "Monitor", path: "/dispatcher/monitor", icon: Monitor },
-    { label: "Reports", path: "/dispatcher/reports", icon: BarChart3 },
+    { labelKey: "nav.tasks", path: "/dispatcher/tasks", icon: ClipboardList },
+    { labelKey: "nav.drivers", path: "/dispatcher/availability", icon: Users },
+    { labelKey: "nav.planning", path: "/dispatcher/planning", icon: RouteIcon },
+    { labelKey: "nav.operations", path: "/dispatcher/operations", icon: MapIcon },
+    { labelKey: "nav.incidents", path: "/dispatcher/incidents", icon: AlertTriangle },
   ],
-  driver: [{ label: "My Route", path: "/driver", icon: MapPin }],
+  driver: [{ labelKey: "nav.myRoute", path: "/driver", icon: MapPin }],
+  cadre: [
+    { labelKey: "nav.addTask", path: "/cadre/new", icon: PlusCircle },
+    { labelKey: "nav.myTasks", path: "/cadre/tasks", icon: ListChecks },
+  ],
 };
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Administrator",
-  dispatcher: "Dispatcher",
-  driver: "Driver",
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  admin: "roles.administrator",
+  dispatcher: "roles.dispatcher",
+  driver: "roles.driver",
+  cadre: "roles.cadre",
 };
 
-function buildBreadcrumb(pathname: string, navItems: NavItem[]): string {
+function buildBreadcrumbKey(pathname: string, navItems: NavItem[]): string {
   const exact = navItems.find((item) => item.path === pathname);
-  if (exact) return exact.label;
+  if (exact) return exact.labelKey;
   const matches = navItems
     .filter((item) => pathname.startsWith(item.path) && item.path !== "/")
     .sort((a, b) => b.path.length - a.path.length);
-  return matches[0]?.label ?? "";
+  return matches[0]?.labelKey ?? "";
 }
 
 export interface DashboardLayoutProps {
@@ -78,6 +80,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -100,7 +103,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     .toUpperCase();
 
   const links = navItems.map((item) => ({
-    label: item.label,
+    label: t(item.labelKey),
     href: item.path,
     icon: (
       <item.icon
@@ -115,7 +118,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (isLoading || !user) return null;
 
-  const breadcrumb = buildBreadcrumb(pathname, navItems);
+  const breadcrumbKey = buildBreadcrumbKey(pathname, navItems);
+  const breadcrumb = breadcrumbKey ? t(breadcrumbKey) : "";
 
   return (
     <div className="flex flex-col lg:flex-row h-screen w-full overflow-hidden">
@@ -143,6 +147,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 ),
               }}
             />
+            <LanguageSwitch collapsed={!open} className="mt-2" />
             <Button
               variant="ghost"
               size="sm"
@@ -151,8 +156,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 await logout();
               }}
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              {open && <span>Sign Out</span>}
+              <LogOut className="w-4 h-4 me-2" />
+              {open && <span>{t("nav.signOut")}</span>}
             </Button>
           </div>
         </SidebarBody>
@@ -162,22 +167,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         <header className="flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-sm px-6 py-3 sticky top-0 z-30">
           <div className="flex items-center gap-3 min-w-0">
             <div className="text-xs uppercase tracking-wider text-muted-foreground hidden sm:block">
-              {ROLE_LABELS[activeRole]}
+              {t(ROLE_LABEL_KEYS[activeRole])}
             </div>
             <span className="text-muted-foreground hidden sm:block">/</span>
             <div className="text-sm font-display font-semibold text-foreground truncate">
-              {breadcrumb || "Workspace"}
+              {breadcrumb || t("nav.workspace")}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
               <span>{user.email}</span>
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="animate-fade-in">{children}</div>
+        <main className="flex-1 overflow-auto bg-background">
+          <div className="animate-fade-in min-w-0">{children}</div>
         </main>
       </div>
     </div>

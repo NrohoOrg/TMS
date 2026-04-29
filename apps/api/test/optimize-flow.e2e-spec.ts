@@ -116,13 +116,9 @@ describe('Optimize flow (e2e)', () => {
         pickupLat: 36.75,
         pickupLng: 3.05,
         pickupWindowStart: isoAtUtc(targetDate, 9, 0),
-        pickupWindowEnd: isoAtUtc(targetDate, 10, 0),
-        pickupServiceMinutes: 5,
         dropoffAddress: 'Dropoff E2E',
         dropoffLat: 36.8,
         dropoffLng: 3.1,
-        dropoffDeadline: isoAtUtc(targetDate, 12, 0),
-        dropoffServiceMinutes: 5,
         priority: 'normal',
       });
 

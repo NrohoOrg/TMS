@@ -12,14 +12,16 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Save, Loader2, RotateCcw } from "lucide-react";
 import { useAdminConfig, useUpdateAdminConfig } from "@/features/shared/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 export default function AdminConfig() {
   const configQuery = useAdminConfig();
   const updateConfig = useUpdateAdminConfig();
   const { toast } = useToast();
+  const { t: tFn } = useTranslation();
 
   const [maxSolveSeconds, setMaxSolveSeconds] = useState(30);
-  const [speedKmh, setSpeedKmh] = useState(40);
+  const [speedKmh, setSpeedKmh] = useState(50);
   const [weightsJson, setWeightsJson] = useState("");
   const [weightsError, setWeightsError] = useState<string | null>(null);
 
@@ -46,7 +48,7 @@ export default function AdminConfig() {
       weights = JSON.parse(weightsJson);
       if (typeof weights !== "object" || Array.isArray(weights)) throw new Error();
     } catch {
-      setWeightsError("Invalid JSON object");
+      setWeightsError(tFn("admin.config.invalidJson"));
       return;
     }
     setWeightsError(null);
@@ -56,33 +58,33 @@ export default function AdminConfig() {
         speedKmh,
         objectiveWeights: weights,
       });
-      toast({ title: "Configuration saved" });
+      toast({ title: tFn("admin.config.saved") });
     } catch (err) {
       toast({
-        title: "Save failed",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: tFn("admin.config.saveFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title="System Configuration"
-        subtitle="Tune optimizer constraints and objective weights."
+        title={tFn("admin.config.title")}
+        subtitle={tFn("admin.config.subtitle")}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={reset}>
-              <RotateCcw className="w-3.5 h-3.5 mr-1" /> Revert
+              <RotateCcw className="w-3.5 h-3.5 me-1" /> {tFn("admin.config.revert")}
             </Button>
             <Button size="sm" onClick={save} disabled={updateConfig.isPending}>
               {updateConfig.isPending ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
               ) : (
-                <Save className="w-3.5 h-3.5 mr-1" />
+                <Save className="w-3.5 h-3.5 me-1" />
               )}
-              Save
+              {tFn("admin.config.save")}
             </Button>
           </>
         }
@@ -92,36 +94,36 @@ export default function AdminConfig() {
         <Skeleton className="h-64 w-full" />
       ) : configQuery.isError ? (
         <ErrorState
-          message={configQuery.error instanceof Error ? configQuery.error.message : "Failed to load config"}
+          message={configQuery.error instanceof Error ? configQuery.error.message : tFn("admin.config.loadFailed")}
           onRetry={() => configQuery.refetch()}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-display">Optimizer constraints</CardTitle>
+              <CardTitle className="text-base font-display">{tFn("admin.config.optimizerConstraints")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-1">
-                <Label>Max solve time (seconds)</Label>
+                <Label>{tFn("admin.config.maxSolveSeconds")}</Label>
                 <Input
                   type="number"
                   value={maxSolveSeconds}
                   onChange={(e) => setMaxSolveSeconds(Number(e.target.value))}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Maximum time OR-Tools is allowed to spend per optimization.
+                  {tFn("admin.config.maxSolveSecondsHint")}
                 </p>
               </div>
               <div className="space-y-1">
-                <Label>Average travel speed (km/h)</Label>
+                <Label>{tFn("admin.config.speedKmh")}</Label>
                 <Input
                   type="number"
                   value={speedKmh}
                   onChange={(e) => setSpeedKmh(Number(e.target.value))}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Used to convert haversine distance to seconds in ETA recalculation.
+                  {tFn("admin.config.speedKmhHint")}
                 </p>
               </div>
             </CardContent>
@@ -129,10 +131,10 @@ export default function AdminConfig() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-display">Objective weights</CardTitle>
+              <CardTitle className="text-base font-display">{tFn("admin.config.objectiveWeights")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Label>Priority weights (JSON)</Label>
+              <Label>{tFn("admin.config.priorityWeights")}</Label>
               <Textarea
                 rows={8}
                 value={weightsJson}
@@ -146,7 +148,7 @@ export default function AdminConfig() {
                 <p className="text-[11px] text-tms-error">{weightsError}</p>
               )}
               <p className="text-[11px] text-muted-foreground">
-                Higher values make the optimizer prefer assigning that priority. Defaults:{" "}
+                {tFn("admin.config.weightsHint")}{" "}
                 <code>{`{"urgent":1000,"high":500,"normal":100,"low":10}`}</code>
               </p>
             </CardContent>
@@ -154,7 +156,7 @@ export default function AdminConfig() {
 
           {configQuery.data?.updatedAt && (
             <p className="text-xs text-muted-foreground md:col-span-2">
-              Last updated: {new Date(configQuery.data.updatedAt).toLocaleString()}
+              {tFn("admin.config.lastUpdated")}: {new Date(configQuery.data.updatedAt).toLocaleString()}
             </p>
           )}
         </div>

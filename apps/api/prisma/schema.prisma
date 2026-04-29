@@ -19,11 +19,20 @@ model User {
   refreshTokens RefreshToken[]
   plans         Plan[]
   optimizationJobs OptimizationJob[]
+  tasksCreated  Task[]   @relation("TaskCreatedBy")
+  tasksDecided  Task[]   @relation("TaskDecidedBy")
 }
 
 enum Role {
   ADMIN
   DISPATCHER
+  CADRE
+}
+
+enum TaskApprovalStatus {
+  pending_approval
+  approved
+  rejected
 }
 
 model RefreshToken {
@@ -64,9 +73,7 @@ model Availability {
 }
 
 enum Priority {
-  low
   normal
-  high
   urgent
 }
 
@@ -88,13 +95,17 @@ model Task {
   dropoffAddress        String
   dropoffLat            Float
   dropoffLng            Float
-  dropoffDeadline       DateTime
-  dropoffServiceMinutes Int        @default(0)
   priority              Priority   @default(normal)
   status                TaskStatus @default(pending)
   notes                 String?
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
+  approvalStatus        TaskApprovalStatus @default(approved)
+  createdById           String?
+  createdBy             User?      @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  decidedAt             DateTime?
+  decidedById           String?
+  decidedBy             User?      @relation("TaskDecidedBy", fields: [decidedById], references: [id])
   stops                 Stop[]
 }
 
@@ -196,11 +207,18 @@ model OptimizationJob {
 }
 
 model Config {
-  id               Int      @id @default(1)
-  maxSolveSeconds  Int      @default(30)
-  speedKmh         Float    @default(40)
-  objectiveWeights Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
-  updatedAt        DateTime @updatedAt
+  id                          Int      @id @default(1)
+  maxSolveSeconds             Int      @default(30)
+  speedKmh                    Float    @default(40)
+  objectiveWeights            Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
+  pickupServiceMinutesDefault Int      @default(20)
+  dropoffWithinHours          Int      @default(2)
+  loadBalancingKmPerTask      Int      @default(15)
+  // Impact / KPI constants. Tunable without code changes.
+  co2GramsPerKm               Int      @default(171)   // EEA avg, light commercial diesel
+  fuelLPer100Km               Float    @default(8)     // typical delivery van
+  dieselPricePerLiterDZD      Int      @default(29)    // ~Algerian retail
+  updatedAt                   DateTime @updatedAt
 }
 
 model GeocodeCache {

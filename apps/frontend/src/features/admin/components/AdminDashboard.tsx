@@ -26,6 +26,7 @@ import {
   useTasks,
 } from "@/features/shared/hooks";
 import { useAuth } from "@/lib/auth-context";
+import { useTranslation } from "react-i18next";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -34,6 +35,7 @@ function todayStr() {
 export default function AdminDashboard() {
   const router = useRouter();
   const { user } = useAuth();
+  const { t: tFn } = useTranslation();
 
   const usersQuery = useAdminUsers();
   const driversQuery = useDrivers();
@@ -49,17 +51,17 @@ export default function AdminDashboard() {
   const allHealthy = health?.status === "ok";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader
-        title={`System overview${user?.name ? ` — ${user.name.split(" ")[0]}` : ""}`}
-        subtitle="High-level snapshot of every part of the platform."
+        title={`${user?.name ? `${user.name.split(" ")[0]} — ` : ""}${tFn("admin.dashboard.title")}`}
+        subtitle={tFn("admin.dashboard.subtitle")}
         actions={
           <>
             <Button size="sm" variant="outline" onClick={() => router.push("/admin/map")}>
-              <MapIcon className="w-4 h-4 mr-1" /> Live map
+              <MapIcon className="w-4 h-4 me-1" /> {tFn("admin.dashboard.liveMap")}
             </Button>
             <Button size="sm" onClick={() => router.push("/admin/health")}>
-              <Activity className="w-4 h-4 mr-1" /> Health
+              <Activity className="w-4 h-4 me-1" /> {tFn("admin.dashboard.health")}
             </Button>
           </>
         }
@@ -68,32 +70,32 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatTile
           icon={Users}
-          label="Users"
+          label={tFn("admin.dashboard.users")}
           value={usersQuery.isLoading ? "…" : String(usersQuery.data?.length ?? 0)}
           onClick={() => router.push("/admin/users")}
         />
         <StatTile
           icon={Users}
-          label="Drivers"
+          label={tFn("admin.dashboard.drivers")}
           value={driversQuery.isLoading ? "…" : String(driversQuery.data?.length ?? 0)}
           onClick={() => router.push("/admin/drivers")}
         />
         <StatTile
           icon={ClipboardList}
-          label="Tasks"
+          label={tFn("admin.dashboard.tasks")}
           value={tasksQuery.isLoading ? "…" : String(totalTasks)}
           onClick={() => router.push("/dispatcher/tasks")}
         />
         <StatTile
           icon={RouteIcon}
-          label="Plans"
+          label={tFn("admin.dashboard.plans")}
           value={plansQuery.isLoading ? "…" : String(plansQuery.data?.length ?? 0)}
           onClick={() => router.push("/dispatcher/planning")}
         />
         <StatTile
           icon={Activity}
-          label="System"
-          value={healthQuery.isLoading ? "…" : allHealthy ? "OK" : "Issue"}
+          label={tFn("admin.dashboard.system")}
+          value={healthQuery.isLoading ? "…" : allHealthy ? tFn("common.ok") : tFn("common.issue")}
           tone={allHealthy ? "success" : "warn"}
           onClick={() => router.push("/admin/health")}
         />
@@ -102,32 +104,31 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-base font-display">Today&apos;s operations</CardTitle>
-            <Button size="sm" variant="ghost" onClick={() => router.push("/dispatcher/monitor")}>
-              Monitor <ArrowRight className="w-3 h-3 ml-1" />
+            <CardTitle className="text-base font-display">{tFn("admin.dashboard.todaysOperations")}</CardTitle>
+            <Button size="sm" variant="ghost" onClick={() => router.push("/dispatcher/operations")}>
+              {tFn("admin.dashboard.openOperations")} <ArrowRight className="w-3 h-3 ms-1" />
             </Button>
           </CardHeader>
           <CardContent>
             {monitorQuery.isLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : !monitor || !monitor.planId ? (
-              <p className="text-sm text-muted-foreground">No published plan today.</p>
+              <p className="text-sm text-muted-foreground">{tFn("admin.dashboard.noPublishedPlan")}</p>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-4 gap-2 text-xs">
-                  <Tile label="Total" value={monitor.overview.total} />
-                  <Tile label="Done" value={monitor.overview.completed} tone="success" />
-                  <Tile label="In progress" value={monitor.overview.inProgress} tone="info" />
+                  <Tile label={tFn("admin.dashboard.total")} value={monitor.overview.total} />
+                  <Tile label={tFn("admin.dashboard.done")} value={monitor.overview.completed} tone="success" />
+                  <Tile label={tFn("admin.dashboard.inProgress")} value={monitor.overview.inProgress} tone="info" />
                   <Tile
-                    label="Delays"
+                    label={tFn("admin.dashboard.delays")}
                     value={monitor.overview.delays}
                     tone={monitor.overview.delays > 0 ? "warn" : undefined}
                   />
                 </div>
                 {todaysPlan && (
                   <div className="text-xs text-muted-foreground">
-                    Plan <span className="font-mono">{todaysPlan.planId.slice(0, 8)}</span>{" "}
-                    • {todaysPlan.taskCount} tasks across {todaysPlan.routeCount} drivers
+                    {tFn("dispatcher.dashboard.planTasksDrivers", { planId: todaysPlan.planId.slice(0, 8), tasks: todaysPlan.taskCount, drivers: todaysPlan.routeCount })}
                   </div>
                 )}
               </div>
@@ -137,18 +138,18 @@ export default function AdminDashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-display">System health</CardTitle>
+            <CardTitle className="text-base font-display">{tFn("admin.dashboard.systemHealth")}</CardTitle>
           </CardHeader>
           <CardContent>
             {healthQuery.isLoading ? (
               <Skeleton className="h-24 w-full" />
             ) : healthQuery.isError ? (
-              <ErrorState message="Health check failed" onRetry={() => healthQuery.refetch()} />
+              <ErrorState message={tFn("admin.dashboard.healthCheckFailed")} onRetry={() => healthQuery.refetch()} />
             ) : (
               <div className="space-y-2">
-                <HealthRow label="Database" healthy={health?.services.db === "ok"} />
-                <HealthRow label="Redis" healthy={health?.services.redis === "ok"} />
-                <HealthRow label="Optimizer" healthy={health?.services.optimizer === "ok"} />
+                <HealthRow label={tFn("admin.dashboard.database")} healthy={health?.services.db === "ok"} />
+                <HealthRow label={tFn("admin.dashboard.redis")} healthy={health?.services.redis === "ok"} />
+                <HealthRow label={tFn("admin.dashboard.optimizer")} healthy={health?.services.optimizer === "ok"} />
               </div>
             )}
           </CardContent>
@@ -158,9 +159,9 @@ export default function AdminDashboard() {
       {/* Recent users */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-display">Recent users</CardTitle>
+          <CardTitle className="text-base font-display">{tFn("admin.dashboard.recentUsers")}</CardTitle>
           <Button size="sm" variant="ghost" onClick={() => router.push("/admin/users")}>
-            Manage <ArrowRight className="w-3 h-3 ml-1" />
+            {tFn("admin.dashboard.manage")} <ArrowRight className="w-3 h-3 ms-1" />
           </Button>
         </CardHeader>
         <CardContent>
@@ -253,6 +254,7 @@ function Tile({
 }
 
 function HealthRow({ label, healthy }: { label: string; healthy: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between text-sm">
       <span>{label}</span>
@@ -265,11 +267,11 @@ function HealthRow({ label, healthy }: { label: string; healthy: boolean }) {
       >
         {healthy ? (
           <>
-            <CheckCircle2 className="w-3 h-3 mr-0.5" /> Healthy
+            <CheckCircle2 className="w-3 h-3 me-0.5" /> {t("admin.health.healthy")}
           </>
         ) : (
           <>
-            <AlertTriangle className="w-3 h-3 mr-0.5" /> Down
+            <AlertTriangle className="w-3 h-3 me-0.5" /> {t("admin.health.down")}
           </>
         )}
       </Badge>

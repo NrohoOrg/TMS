@@ -28,6 +28,7 @@ import { MonitorQueryDto } from './dto/monitor-query.dto';
 import { ExportReportsQueryDto, ReportsQueryDto } from './dto/reports-query.dto';
 import { UpdateStopStatusDto } from './dto/update-stop-status.dto';
 import {
+  DispatcherImpactResponse,
   DispatcherMonitorResponse,
   DispatcherReportsResponse,
   PlanningService,
@@ -75,6 +76,17 @@ export class DispatcherController {
   @ApiResponse({ status: 200, description: 'Monitoring overview' })
   monitor(@Query() query: MonitorQueryDto): Promise<DispatcherMonitorResponse> {
     return this.planningService.getMonitor(query.date);
+  }
+
+  @Get('impact')
+  @ApiOperation({
+    summary:
+      "Daily impact KPIs (tasks done, km saved vs naive baseline, CO2 / fuel avoided).",
+  })
+  @ApiQuery({ name: 'date', required: false, description: 'YYYY-MM-DD (defaults to today)' })
+  @ApiResponse({ status: 200, description: 'Daily impact summary' })
+  impact(@Query() query: MonitorQueryDto): Promise<DispatcherImpactResponse> {
+    return this.planningService.getImpact(query.date);
   }
 
   @Get('reports')
