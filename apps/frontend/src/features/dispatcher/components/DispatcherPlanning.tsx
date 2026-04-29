@@ -31,7 +31,7 @@ import {
   useUnassignedTasks,
 } from "@/features/shared/hooks/useManualPlanning";
 import { useToast } from "@/hooks/use-toast";
-import { MapView, MapLegend, getDriverColor, type MapMarker, type MapRoute } from "@/components/map";
+import { MapView, getDriverColor, type MapMarker, type MapRoute } from "@/components/map";
 import { PlanRoutesPanel } from "./PlanRoutesPanel";
 import { UnassignedPanel } from "./UnassignedPanel";
 import type { LatLng } from "@/lib/osrm";
@@ -295,24 +295,12 @@ export default function DispatcherPlanning() {
               />
             </div>
           ) : (
-            <>
-              <MapView
-                markers={mapMarkers}
-                routes={mapRoutes}
-                height="100%"
-                fitBoundsKey={`${plan.planId}-${plan.routes.length}`}
-              />
-              <div className="absolute bottom-3 start-3 z-[400]">
-                <MapLegend
-                  items={[
-                    { color: "#1f2937", label: "Ministère" },
-                    { color: "#2265c3", label: "Pickup" },
-                    { color: "#0d9488", label: "Dropoff" },
-                    { color: "#dc2626", label: "Unassigned" },
-                  ]}
-                />
-              </div>
-            </>
+            <MapView
+              markers={mapMarkers}
+              routes={mapRoutes}
+              height="100%"
+              fitBoundsKey={`${plan.planId}-${plan.routes.length}`}
+            />
           )}
         </div>
 
