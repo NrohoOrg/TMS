@@ -143,6 +143,9 @@
     "signingIn": "Signing in…",
     "signedIn": "Signed in — redirecting…",
     "invalidCredentials": "Invalid email or password",
+    "networkError": "Could not reach the server. Check your connection and try again.",
+    "tooManyAttempts": "Too many attempts. Please wait a minute and try again.",
+    "serverError": "Server error. Please try again in a moment.",
     "loginFailed": "Login failed",
     "emailPlaceholder": "name@company.dz",
     "passwordPlaceholder": "••••••••",
@@ -199,6 +202,8 @@
       "taskDeleted": "Task deleted",
       "confirmDelete": "Delete this task?",
       "filtersAll": "All",
+      "allStatuses": "All statuses",
+      "allPriorities": "All priorities",
       "filterByStatus": "Filter by status",
       "filterByPriority": "Filter by priority",
       "searchPlaceholder": "Search tasks…",
@@ -259,6 +264,8 @@
       "runOptimizer": "Plan Routes",
       "recalculate": "Recalculate",
       "publish": "Publish",
+      "publishedReadOnlyTitle": "Plan is already published",
+      "publishedReadOnlyHint": "This plan is published and read-only. To change it, create a new draft or unpublish it first.",
       "publishing": "Publishing…",
       "published": "Published",
       "unpublish": "Unpublish",
@@ -308,10 +315,7 @@
       "unlock": "Unlock",
       "addEmptyPlan": "Add empty plan",
       "noPlansHint": "Pick a date with plans or create a new draft.",
-      "selectOrCreate": "Select or create a plan to start.",
-      "stops": "stops",
-      "tasks": "tasks",
-      "drivers": "drivers"
+      "selectOrCreate": "Select or create a plan to start."
     },
     "operations": {
       "title": "Operations",
@@ -529,6 +533,7 @@
       "shiftEnd": "Shift end",
       "depotLat": "Depot latitude",
       "depotLng": "Depot longitude",
+      "depotFixed": "Every driver starts and ends the day at {{name}}.",
       "capacityUnits": "Capacity units",
       "active": "Active"
     },
@@ -678,5 +683,34 @@
     "coordsResolveFailed": "Could not resolve coordinates. Try another suggestion.",
     "pickupWindowHelper": "Pickup window auto-extends 30 minutes from the start time.",
     "saveChanges": "Save changes"
+  },
+  "cadre": {
+    "title": "My Tasks",
+    "subtitle": "{{count}} task(s) submitted",
+    "addTask": "Add Task",
+    "intro": "Tasks you submit are sent to the dispatcher for approval. Once approved you can no longer edit or delete them.",
+    "loadFailed": "Failed to load tasks",
+    "taskDeleted": "Task deleted",
+    "confirmDelete": "Delete \"{{title}}\"?",
+    "cannotDeleteApproved": "Approved tasks cannot be deleted",
+    "cannotEditApproved": "Approved tasks cannot be edited",
+    "assignedTo": "Assigned to {{name}}",
+    "startedBy": "Started — {{name}}",
+    "empty": {
+      "title": "No tasks yet",
+      "description": "Add your first task — it will be sent to the dispatcher for approval."
+    },
+    "table": {
+      "title": "Title",
+      "pickupDropoff": "Pickup / Dropoff"
+    },
+    "status": {
+      "created": "Created",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "assigned": "Assigned",
+      "started": "Started",
+      "completed": "Completed"
+    }
   }
 }

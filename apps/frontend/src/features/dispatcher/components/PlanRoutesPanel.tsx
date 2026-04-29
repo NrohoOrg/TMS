@@ -257,6 +257,15 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
     const target = findStop(String(e.over.id));
     if (!source || !target) return;
 
+    if (!isDraft) {
+      toast({
+        title: t("dispatcher.planning.publishedReadOnlyTitle"),
+        description: t("dispatcher.planning.publishedReadOnlyHint"),
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       await moveStop.mutateAsync({
         stopId: source.stop.stopId,
@@ -264,9 +273,14 @@ export function PlanRoutesPanel({ plan, drivers, unassignedTasks }: Props) {
         targetSequence: target.index,
       });
     } catch (err) {
+      const raw = err instanceof Error ? err.message : "";
+      const friendly =
+        raw.includes("409") || /draft/i.test(raw)
+          ? t("dispatcher.planning.publishedReadOnlyHint")
+          : raw || t("common.unknownError");
       toast({
         title: t("common.updateFailed"),
-        description: err instanceof Error ? err.message : t("common.unknownError"),
+        description: friendly,
         variant: "destructive",
       });
     }

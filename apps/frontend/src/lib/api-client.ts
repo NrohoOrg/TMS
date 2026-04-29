@@ -96,8 +96,15 @@ async function request<T>(
 
   const res = await fetch(url, { ...options, headers });
 
-  // Handle 401 — attempt a silent token refresh once
-  if (res.status === 401 && !retried) {
+  // The /auth/* endpoints are unauthenticated (or are themselves the refresh
+  // path) — a 401 from them is a real "wrong credentials" / "expired refresh
+  // token" answer, not a stale-access-token signal. Triggering the silent
+  // refresh + full-page redirect flow on a login attempt would wipe the React
+  // state we just set to show the error.
+  const isAuthEndpoint = path.startsWith("/auth/");
+
+  // Handle 401 — attempt a silent token refresh once (only on real API calls)
+  if (res.status === 401 && !retried && !isAuthEndpoint) {
     const refreshed = await tryRefresh();
     if (refreshed) {
       return request<T>(path, options, true);
@@ -126,8 +133,13 @@ async function request<T>(
   }
 
   if (!res.ok || body.success === false) {
-    // NestJS error responses can be { message, error, statusCode } or { success, error }
+    // NestJS error responses can come back in three shapes:
+    //   { message, error, statusCode }                        — raw HttpException
+    //   { success: false, error: { code, message } }          — global wrapper
+    //   { success: false, error: "..." }                      — wrapper, string
+    const errObj = typeof body.error === "object" && body.error !== null ? body.error : null;
     const message =
+      (errObj && typeof errObj.message === "string" ? errObj.message : null) ??
       (typeof body.message === "string" ? body.message : null) ??
       (typeof body.error === "string" ? body.error : null) ??
       (Array.isArray(body.message) ? body.message.join(", ") : null) ??

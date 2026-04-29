@@ -447,6 +447,7 @@ export class IncidentsService {
     const pendingTasks = await this.prisma.task.findMany({
       where: {
         status: TaskStatus.pending,
+        approvalStatus: 'approved',
         pickupWindowStart: { gte: start, lt: end },
       },
     });
