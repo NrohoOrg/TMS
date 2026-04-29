@@ -1,7 +1,14 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-
+  // Emit a self-contained server bundle at .next/standalone for the Docker
+  // runner stage (apps/frontend/Dockerfile copies it as the production image).
+  output: "standalone",
+  // Preserve the monorepo layout under standalone/ so the Dockerfile's
+  // `node apps/frontend/server.js` resolves. Without this Next traces from
+  // apps/frontend and would emit server.js at the root instead.
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   reactCompiler: true,
   devIndicators: false,
   // Local-dev escape hatch: when API_PROXY_TARGET is set, every request to
