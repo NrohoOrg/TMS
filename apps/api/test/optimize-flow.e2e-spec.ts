@@ -135,19 +135,31 @@ describe('Optimize flow (e2e)', () => {
     expect(createdJobId).toBeDefined();
 
     const timeoutAt = Date.now() + 60_000;
+    let lastStatusBody: any = null;
     while (Date.now() < timeoutAt) {
       const statusResponse = await request(app.getHttpServer())
         .get(`/api/dispatcher/planning/status/${createdJobId}`)
         .set('Authorization', `Bearer ${accessToken}`);
 
       expect(statusResponse.status).toBe(200);
+      lastStatusBody = statusResponse.body.data;
 
-      if (statusResponse.body.data.status === 'completed') {
-        createdPlanId = statusResponse.body.data.planId;
+      if (lastStatusBody.status === 'completed') {
+        createdPlanId = lastStatusBody.planId;
+        break;
+      }
+
+      if (lastStatusBody.status === 'failed') {
+        // eslint-disable-next-line no-console
+        console.error('Optimization job failed in CI:', lastStatusBody);
         break;
       }
 
       await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    if (!createdPlanId) {
+      // eslint-disable-next-line no-console
+      console.error('Final job state before failing assertion:', lastStatusBody);
     }
 
     expect(createdPlanId).toBeDefined();
