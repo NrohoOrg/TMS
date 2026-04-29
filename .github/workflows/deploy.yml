@@ -124,5 +124,5 @@ jobs:
         run: |
           sleep 5
           curl -fsS https://api.tms.nroho.dz/health || exit 1
-          curl -fsS -o /dev/null -w "%{http_code}" https://tms.nroho.dz/ | grep -E "^(200|301|302)$" || exit 1
+          curl -fsS -o /dev/null -w "%{http_code}" https://tms.nroho.dz/ | grep -E "^(200|301|302|307|308)$" || exit 1
           echo "Deploy successful"
