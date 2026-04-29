@@ -8,7 +8,30 @@ import { configureGlobalResponseHandling } from './common/http/global-response.h
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
-  app.enableCors();
+
+  const allowedOrigins = (
+    process.env.CORS_ALLOWED_ORIGINS ??
+    'https://tms.nroho.dz,https://www.tms.nroho.dz,http://localhost:3000'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: (requestOrigin, callback) => {
+      // Same-origin / non-browser callers send no Origin header. Allow them.
+      if (!requestOrigin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(requestOrigin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${requestOrigin} not allowed by CORS`));
+    },
+    credentials: true,
+  });
   app.setGlobalPrefix('api', {
     exclude: [{ path: 'health', method: RequestMethod.GET }],
   });
