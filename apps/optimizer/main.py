@@ -14,10 +14,8 @@ CAPACITY_EXCEEDED = "CAPACITY_EXCEEDED"
 SOLVER_TIMEOUT = "SOLVER_TIMEOUT"
 
 PRIORITY_PENALTIES = {
-    "urgent": 1000,
-    "high": 500,
-    "normal": 100,
-    "low": 10,
+    "urgent": 100000,
+    "normal": 10000,
 }
 
 LARGE_CAPACITY = 999999
@@ -25,8 +23,15 @@ LARGE_CAPACITY = 999999
 
 class ConfigIn(BaseModel):
     maxSolveSeconds: int = Field(30, ge=1)
-    speedKmh: float = Field(40, gt=0)
+    speedKmh: float = Field(50, gt=0)
     returnToDepot: bool = False
+    # R5.2.4: hard pairwise upper bound on dropoff time relative to pickup.
+    # Replaces the per-task dropoffDeadlineS with a global rule.
+    dropoffWithinSeconds: int = Field(7200, ge=1)
+    # Fairness lever: km of detour the planner is willing to accept to move
+    # one task from the busiest driver to the least busy one. 0 = pure
+    # distance, no balancing. Higher = more aggressive balancing.
+    loadBalancingKmPerTask: int = Field(15, ge=0)
 
 
 class DriverIn(BaseModel):
@@ -40,7 +45,7 @@ class DriverIn(BaseModel):
 
 class TaskIn(BaseModel):
     id: str
-    priority: Literal["low", "normal", "high", "urgent"] = "normal"
+    priority: Literal["normal", "urgent"] = "normal"
     pickupLat: float
     pickupLng: float
     pickupWindowStartS: int
@@ -48,8 +53,6 @@ class TaskIn(BaseModel):
     pickupServiceS: int
     dropoffLat: float
     dropoffLng: float
-    dropoffDeadlineS: int
-    dropoffServiceS: int
     capacityUnits: int = Field(ge=1)
 
 
@@ -74,13 +77,19 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> int:
     return int(round(earth_radius_m * c))
 
 
-def _unassigned_reason(task: TaskIn, drivers: list[DriverIn], has_capacity: bool) -> str:
+def _unassigned_reason(
+    task: TaskIn,
+    drivers: list[DriverIn],
+    has_capacity: bool,
+    dropoff_within_seconds: int,
+) -> str:
     if not drivers:
         return NO_DRIVER_AVAILABLE
+    task_latest_dropoff = task.pickupWindowStartS + dropoff_within_seconds
     overlaps = [
         d
         for d in drivers
-        if d.shiftStartS <= task.dropoffDeadlineS and d.shiftEndS >= task.pickupWindowStartS
+        if d.shiftStartS <= task_latest_dropoff and d.shiftEndS >= task.pickupWindowStartS
     ]
     if not overlaps:
         return TIME_WINDOW_INFEASIBLE
@@ -147,7 +156,8 @@ def optimize(body: OptimizeRequest):
             node_coords.append((task.dropoffLat, task.dropoffLng))
             node_kinds.append("dropoff")
             node_task_idx.append(task_index)
-            service_s.append(task.dropoffServiceS)
+            # R5.2.3: dropoff service is removed from the model — always 0.
+            service_s.append(0)
 
         total_nodes = len(node_coords)
         speed_mps = body.config.speedKmh * 1000.0 / 3600.0
@@ -199,11 +209,12 @@ def optimize(body: OptimizeRequest):
             return service_s[from_node] + travel
 
         time_idx = routing.RegisterTransitCallback(time_callback)
+        dropoff_within_seconds = body.config.dropoffWithinSeconds
         max_shift_end = max(driver.shiftEndS for driver in drivers)
         max_task_time = max(
             [0]
             + [task.pickupWindowEndS for task in tasks]
-            + [task.dropoffDeadlineS for task in tasks]
+            + [task.pickupWindowStartS + dropoff_within_seconds for task in tasks]
         )
         time_horizon = max(24 * 3600, max_shift_end, max_task_time)
         routing.AddDimension(
@@ -228,7 +239,38 @@ def optimize(body: OptimizeRequest):
             time_dim.CumulVar(pickup_index).SetRange(
                 task.pickupWindowStartS, task.pickupWindowEndS
             )
-            time_dim.CumulVar(dropoff_index).SetRange(0, task.dropoffDeadlineS)
+            # R5.2.4: dropoff bounded relative to pickup by global config rule.
+            time_dim.CumulVar(dropoff_index).SetRange(0, time_horizon)
+            solver.Add(
+                time_dim.CumulVar(dropoff_index)
+                <= time_dim.CumulVar(pickup_index) + dropoff_within_seconds
+            )
+
+        # Fairness lever: track tasks-per-vehicle and penalise the gap between
+        # the busiest and least-busy driver. Each pickup node contributes 1;
+        # SetGlobalSpanCostCoefficient adds K × (max - min) to the objective,
+        # so the planner only piles tasks on one driver when re-routing them
+        # would cost more km than the imbalance penalty buys.
+        if num_tasks > 0 and body.config.loadBalancingKmPerTask > 0:
+            task_count_demands = [0] * total_nodes
+            for task_index in range(num_tasks):
+                task_count_demands[pickup_nodes[task_index]] = 1
+
+            def task_count_callback(index: int) -> int:
+                return task_count_demands[manager.IndexToNode(index)]
+
+            task_count_idx = routing.RegisterUnaryTransitCallback(task_count_callback)
+            routing.AddDimensionWithVehicleCapacity(
+                task_count_idx,
+                0,
+                [num_tasks] * num_drivers,
+                True,
+                "TaskCount",
+            )
+            task_count_dim = routing.GetDimensionOrDie("TaskCount")
+            task_count_dim.SetGlobalSpanCostCoefficient(
+                int(body.config.loadBalancingKmPerTask)
+            )
 
         has_capacity_dimension = any(driver.capacityUnits is not None for driver in drivers)
         if has_capacity_dimension:
@@ -289,8 +331,11 @@ def optimize(body: OptimizeRequest):
 
         search_params = pywrapcp.DefaultRoutingSearchParameters()
         search_params.time_limit.seconds = int(body.config.maxSolveSeconds)
+        # PARALLEL_CHEAPEST_INSERTION handles pickup-delivery + tight time
+        # windows + disjunctions better than PATH_CHEAPEST_ARC, which can
+        # silently fail to construct any first solution.
         search_params.first_solution_strategy = (
-            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
         )
         search_params.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
@@ -315,7 +360,7 @@ def optimize(body: OptimizeRequest):
                     {
                         "taskId": task.id,
                         "reason": reason
-                        or _unassigned_reason(task, drivers, has_capacity_dimension),
+                        or _unassigned_reason(task, drivers, has_capacity_dimension, dropoff_within_seconds),
                     }
                     for task in tasks
                 ],
@@ -374,7 +419,7 @@ def optimize(body: OptimizeRequest):
                         "taskId": task.id,
                         "reason": SOLVER_TIMEOUT
                         if timed_out
-                        else _unassigned_reason(task, drivers, has_capacity_dimension),
+                        else _unassigned_reason(task, drivers, has_capacity_dimension, dropoff_within_seconds),
                     }
                 )
 

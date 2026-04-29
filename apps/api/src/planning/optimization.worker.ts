@@ -13,6 +13,8 @@ type OptimizerRequest = {
     maxSolveSeconds: number;
     speedKmh: number;
     returnToDepot: boolean;
+    dropoffWithinSeconds: number;
+    loadBalancingKmPerTask: number;
   };
   drivers: Array<{
     id: string;
@@ -32,8 +34,6 @@ type OptimizerRequest = {
     pickupServiceS: number;
     dropoffLat: number;
     dropoffLng: number;
-    dropoffDeadlineS: number;
-    dropoffServiceS: number;
     capacityUnits: number;
   }>;
 };
@@ -152,7 +152,12 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
       const [config, activeDrivers, tasks] = await Promise.all([
         this.prisma.config.findUnique({
           where: { id: 1 },
-          select: { maxSolveSeconds: true, speedKmh: true },
+          select: {
+            maxSolveSeconds: true,
+            speedKmh: true,
+            dropoffWithinHours: true,
+            loadBalancingKmPerTask: true,
+          },
         }),
         this.prisma.driver.findMany({
           where: { active: true },
@@ -168,6 +173,7 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
         this.prisma.task.findMany({
           where: {
             status: TaskStatus.pending,
+            approvalStatus: 'approved',
             pickupWindowStart: {
               gte: start,
               lt: end,
@@ -183,8 +189,6 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
             pickupServiceMinutes: true,
             dropoffLat: true,
             dropoffLng: true,
-            dropoffDeadline: true,
-            dropoffServiceMinutes: true,
           },
         }),
       ]);
@@ -248,7 +252,7 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           task.id,
           {
             pickupServiceS: task.pickupServiceMinutes * 60,
-            dropoffServiceS: task.dropoffServiceMinutes * 60,
+            dropoffServiceS: 0,
           },
         ]),
       );
@@ -259,6 +263,8 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           maxSolveSeconds: config.maxSolveSeconds,
           speedKmh: config.speedKmh,
           returnToDepot: job.data.returnToDepot,
+          dropoffWithinSeconds: config.dropoffWithinHours * 3600,
+          loadBalancingKmPerTask: config.loadBalancingKmPerTask,
         },
         drivers: optimizerDrivers,
         tasks: tasks.map((task) => ({
@@ -271,8 +277,6 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           pickupServiceS: task.pickupServiceMinutes * 60,
           dropoffLat: task.dropoffLat,
           dropoffLng: task.dropoffLng,
-          dropoffDeadlineS: this.dateToSecondsSinceMidnight(task.dropoffDeadline),
-          dropoffServiceS: task.dropoffServiceMinutes * 60,
           capacityUnits: 1,
         })),
       };

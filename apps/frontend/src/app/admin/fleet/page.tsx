@@ -1,5 +1,5 @@
-import AdminFleet from "@/features/admin/components/AdminFleet";
+import { redirect } from "next/navigation";
 
 export default function AdminFleetRoute() {
-  return <AdminFleet />;
+  redirect("/admin/drivers");
 }

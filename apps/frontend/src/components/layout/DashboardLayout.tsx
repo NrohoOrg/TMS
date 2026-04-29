@@ -1,111 +1,125 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  Truck,
   UserCheck,
-  Settings,
-  FileText,
   Activity,
   ClipboardList,
-  CalendarDays,
-  Route,
-  Monitor,
-  BarChart3,
+  ListChecks,
+  Route as RouteIcon,
   MapPin,
   LogOut,
+  Map as MapIcon,
+  AlertTriangle,
+  PlusCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Sidebar,
-  SidebarBody,
-  SidebarLink,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarBody, SidebarLink } from "@/components/ui/sidebar";
 import { motion } from "framer-motion";
+import { useAuth } from "@/lib/auth-context";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitch } from "@/i18n/LanguageSwitch";
 
-/* ── Types ── */
-type UserRole = "admin" | "dispatcher" | "driver";
+type UserRole = "admin" | "dispatcher" | "driver" | "cadre";
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   path: string;
   icon: React.ElementType;
 }
 
-/* ── Static navigation config ── */
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   admin: [
-    { label: "Dashboard", path: "/admin", icon: LayoutDashboard },
-    { label: "Users", path: "/admin/users", icon: Users },
-    { label: "Fleet", path: "/admin/fleet", icon: Truck },
-    { label: "Drivers", path: "/admin/drivers", icon: UserCheck },
-    { label: "Configuration", path: "/admin/config", icon: Settings },
-    { label: "Audit Log", path: "/admin/audit", icon: FileText },
-    { label: "System Health", path: "/admin/health", icon: Activity },
+    { labelKey: "nav.dashboard", path: "/admin", icon: LayoutDashboard },
+    { labelKey: "nav.liveMap", path: "/admin/map", icon: MapIcon },
+    { labelKey: "nav.users", path: "/admin/users", icon: Users },
+    { labelKey: "nav.drivers", path: "/admin/drivers", icon: UserCheck },
+    { labelKey: "nav.systemHealth", path: "/admin/health", icon: Activity },
   ],
   dispatcher: [
-    { label: "Dashboard", path: "/dispatcher", icon: LayoutDashboard },
-    { label: "Tasks", path: "/dispatcher/tasks", icon: ClipboardList },
-    { label: "Driver Availability", path: "/dispatcher/availability", icon: CalendarDays },
-    { label: "Planning", path: "/dispatcher/planning", icon: Route },
-    { label: "Execution Monitor", path: "/dispatcher/monitor", icon: Monitor },
-    { label: "Reports", path: "/dispatcher/reports", icon: BarChart3 },
+    { labelKey: "nav.tasks", path: "/dispatcher/tasks", icon: ClipboardList },
+    { labelKey: "nav.drivers", path: "/dispatcher/availability", icon: Users },
+    { labelKey: "nav.planning", path: "/dispatcher/planning", icon: RouteIcon },
+    { labelKey: "nav.operations", path: "/dispatcher/operations", icon: MapIcon },
+    { labelKey: "nav.incidents", path: "/dispatcher/incidents", icon: AlertTriangle },
   ],
-  driver: [
-    { label: "My Route", path: "/driver", icon: MapPin },
+  driver: [{ labelKey: "nav.myRoute", path: "/driver", icon: MapPin }],
+  cadre: [
+    { labelKey: "nav.addTask", path: "/cadre/new", icon: PlusCircle },
+    { labelKey: "nav.myTasks", path: "/cadre/tasks", icon: ListChecks },
   ],
 };
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Administrator",
-  dispatcher: "Dispatcher",
-  driver: "Driver",
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  admin: "roles.administrator",
+  dispatcher: "roles.dispatcher",
+  driver: "roles.driver",
+  cadre: "roles.cadre",
 };
 
-/* ── Mock user — swap this to use a real user context later ── */
-const MOCK_USER = {
-  name: "Karim Benali",
-  email: "admin@tms.dz",
-  role: "admin" as UserRole,
-};
-
-/* ── Component ── */
-export interface DashboardLayoutProps {
-  children: ReactNode;
-  /** Override the mock role to render a different sidebar nav. */
-  role?: UserRole;
+function buildBreadcrumbKey(pathname: string, navItems: NavItem[]): string {
+  const exact = navItems.find((item) => item.path === pathname);
+  if (exact) return exact.labelKey;
+  const matches = navItems
+    .filter((item) => pathname.startsWith(item.path) && item.path !== "/")
+    .sort((a, b) => b.path.length - a.path.length);
+  return matches[0]?.labelKey ?? "";
 }
 
-export default function DashboardLayout({
-  children,
-  role = "admin",
-}: DashboardLayoutProps) {
+export interface DashboardLayoutProps {
+  children: ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { user, isLoading, logout } = useAuth();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
-  const activeRole = role || "admin";
+  useEffect(() => {
+    if (!isLoading && !user) {
+      router.push("/login");
+    }
+  }, [isLoading, user, router]);
+
+  const activeRole: UserRole = user
+    ? (user.role.toLowerCase() as UserRole)
+    : "dispatcher";
   const navItems = NAV_ITEMS[activeRole] || [];
 
-  // Convert nav items to sidebar links format
+  const userName = user?.name ?? "User";
+  const userInitials = userName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   const links = navItems.map((item) => ({
-    label: item.label,
+    label: t(item.labelKey),
     href: item.path,
     icon: (
       <item.icon
         className={cn(
           "text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0",
-          pathname === item.path && "text-sidebar-primary dark:text-sidebar-primary"
+          (pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path + "/"))) &&
+            "text-sidebar-primary",
         )}
       />
     ),
   }));
+
+  if (isLoading || !user) return null;
+
+  const breadcrumbKey = buildBreadcrumbKey(pathname, navItems);
+  const breadcrumb = breadcrumbKey ? t(breadcrumbKey) : "";
 
   return (
     <div className="flex flex-col lg:flex-row h-screen w-full overflow-hidden">
@@ -122,72 +136,83 @@ export default function DashboardLayout({
           <div>
             <SidebarLink
               link={{
-                label: MOCK_USER.name,
+                label: userName,
                 href: "#",
                 icon: (
                   <div className="h-7 w-7 flex-shrink-0 rounded-full bg-sidebar-accent flex items-center justify-center">
                     <span className="text-xs font-semibold text-sidebar-primary">
-                      {MOCK_USER.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
+                      {userInitials}
                     </span>
                   </div>
                 ),
               }}
             />
+            <LanguageSwitch collapsed={!open} className="mt-2" />
             <Button
               variant="ghost"
               size="sm"
               className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 mt-2"
-              onClick={() => router.push("/login")}
+              onClick={async () => {
+                await logout();
+              }}
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              {open && <span>Sign Out</span>}
+              <LogOut className="w-4 h-4 me-2" />
+              {open && <span>{t("nav.signOut")}</span>}
             </Button>
           </div>
         </SidebarBody>
       </Sidebar>
 
-      {/* ── Main Content ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <main className="flex-1 overflow-y-auto bg-background">
-          <div className="animate-fade-in">{children}</div>
+        <header className="flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-sm px-6 py-3 sticky top-0 z-30">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground hidden sm:block">
+              {t(ROLE_LABEL_KEYS[activeRole])}
+            </div>
+            <span className="text-muted-foreground hidden sm:block">/</span>
+            <div className="text-sm font-display font-semibold text-foreground truncate">
+              {breadcrumb || t("nav.workspace")}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+              <span>{user.email}</span>
+            </div>
+          </div>
+        </header>
+        <main className="flex-1 overflow-auto bg-background">
+          <div className="animate-fade-in min-w-0">{children}</div>
         </main>
       </div>
     </div>
   );
 }
 
-const Logo = () => {
-  return (
-    <Link
-      href="#"
-      className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
+const Logo = () => (
+  <Link
+    href="#"
+    className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
+  >
+    <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
+      <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+    </div>
+    <motion.span
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="font-display font-bold text-sidebar-primary whitespace-pre"
     >
-      <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
-        <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
-      </div>
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="font-display font-bold text-sidebar-primary whitespace-pre"
-      >
-        TMS
-      </motion.span>
-    </Link>
-  );
-};
+      TMS
+    </motion.span>
+  </Link>
+);
 
-const LogoIcon = () => {
-  return (
-    <Link
-      href="#"
-      className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
-    >
-      <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
-        <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
-      </div>
-    </Link>
-  );
-};
+const LogoIcon = () => (
+  <Link
+    href="#"
+    className="font-normal flex space-x-2 items-center text-sm py-1 relative z-20"
+  >
+    <div className="h-8 w-8 rounded-lg bg-sidebar-accent flex items-center justify-center overflow-hidden flex-shrink-0">
+      <Image src="/TMS_LOGO.png" alt="TMS Logo" width={28} height={28} />
+    </div>
+  </Link>
+);

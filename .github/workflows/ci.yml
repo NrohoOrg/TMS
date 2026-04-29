@@ -35,7 +35,11 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - run: pnpm install --frozen-lockfile
+      - run: pip install -r apps/optimizer/requirements.txt
       - uses: nrwl/nx-set-shas@v4
       - run: pnpm nx affected -t lint typecheck --parallel=3
 
@@ -104,10 +108,40 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api prisma migrate deploy
       - run: pnpm --filter api prisma generate
+      - run: pnpm --filter api prisma:seed
+      - run: pip install -r apps/optimizer/requirements.txt
+      - name: Start Python optimizer in background
+        run: |
+          cd apps/optimizer
+          nohup uvicorn main:app --host 0.0.0.0 --port 8000 > optimizer.log 2>&1 &
+          echo $! > optimizer.pid
+      - name: Wait for optimizer to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/docs > /dev/null; then
+              echo "Optimizer is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Optimizer did not start in time"
+          cat apps/optimizer/optimizer.log
+          exit 1
       - run: pnpm nx run api:test:e2e
+      - if: always()
+        name: Show optimizer log on failure
+        run: |
+          echo "=== optimizer.log (tail) ==="
+          tail -200 apps/optimizer/optimizer.log || true
+          if [ -f apps/optimizer/optimizer.pid ]; then
+            kill $(cat apps/optimizer/optimizer.pid) || true
+          fi
 
   build:
     needs: [lint-typecheck, unit-tests]

@@ -1,262 +1,349 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { addDays, format, isSameDay, startOfWeek } from "date-fns";
+import * as Popover from "@radix-ui/react-popover";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Save } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  useAvailability,
+  useDrivers,
+  useUpdateAvailability,
+} from "@/features/shared/hooks";
+import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Settings2,
+} from "lucide-react";
+import type { AvailabilityRow, Driver } from "@/types/api";
 
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-interface DriverAvail {
-  id: string;
-  name: string;
-  defaultShift: string;
-  depot: string;
-  vehicle: string;
-  availability: Record<
-    string,
-    { available: boolean; start: string; end: string; modified: boolean }
-  >;
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
 }
 
-const INITIAL_DRIVERS: DriverAvail[] = [
-  {
-    id: "1",
-    name: "Youcef Merah",
-    defaultShift: "08:00-17:00",
-    depot: "Algiers Central",
-    vehicle: "16-A-4521",
-    availability: {
-      Mon: { available: true, start: "08:00", end: "17:00", modified: false },
-      Tue: { available: true, start: "08:00", end: "17:00", modified: false },
-      Wed: { available: true, start: "08:00", end: "17:00", modified: false },
-      Thu: { available: true, start: "08:00", end: "17:00", modified: false },
-      Fri: { available: true, start: "08:00", end: "17:00", modified: false },
-      Sat: { available: true, start: "08:00", end: "13:00", modified: true },
-      Sun: { available: false, start: "", end: "", modified: false },
-    },
-  },
-  {
-    id: "2",
-    name: "Rachid Bouzid",
-    defaultShift: "07:00-16:00",
-    depot: "Blida Depot",
-    vehicle: "09-C-1245",
-    availability: {
-      Mon: { available: true, start: "07:00", end: "16:00", modified: false },
-      Tue: { available: true, start: "07:00", end: "16:00", modified: false },
-      Wed: { available: true, start: "07:00", end: "16:00", modified: false },
-      Thu: { available: true, start: "07:00", end: "16:00", modified: false },
-      Fri: { available: true, start: "07:00", end: "16:00", modified: false },
-      Sat: { available: false, start: "", end: "", modified: false },
-      Sun: { available: false, start: "", end: "", modified: false },
-    },
-  },
-  {
-    id: "3",
-    name: "Fatima Zahra",
-    defaultShift: "08:00-17:00",
-    depot: "Algiers Central",
-    vehicle: "—",
-    availability: {
-      Mon: { available: false, start: "", end: "", modified: true },
-      Tue: { available: false, start: "", end: "", modified: true },
-      Wed: { available: false, start: "", end: "", modified: true },
-      Thu: { available: false, start: "", end: "", modified: true },
-      Fri: { available: false, start: "", end: "", modified: true },
-      Sat: { available: false, start: "", end: "", modified: false },
-      Sun: { available: false, start: "", end: "", modified: false },
-    },
-  },
-  {
-    id: "4",
-    name: "Mohamed Ait",
-    defaultShift: "06:00-15:00",
-    depot: "Oran Depot",
-    vehicle: "16-E-3344",
-    availability: {
-      Mon: { available: true, start: "06:00", end: "15:00", modified: false },
-      Tue: { available: true, start: "06:00", end: "15:00", modified: false },
-      Wed: { available: true, start: "06:00", end: "15:00", modified: false },
-      Thu: { available: true, start: "06:00", end: "15:00", modified: false },
-      Fri: { available: true, start: "06:00", end: "15:00", modified: false },
-      Sat: { available: true, start: "06:00", end: "12:00", modified: true },
-      Sun: { available: false, start: "", end: "", modified: false },
-    },
-  },
-  {
-    id: "5",
-    name: "Salim Tounsi",
-    defaultShift: "08:00-17:00",
-    depot: "Algiers Central",
-    vehicle: "16-B-7832",
-    availability: {
-      Mon: { available: true, start: "08:00", end: "17:00", modified: false },
-      Tue: { available: true, start: "08:00", end: "17:00", modified: false },
-      Wed: { available: true, start: "09:00", end: "17:00", modified: true },
-      Thu: { available: true, start: "08:00", end: "17:00", modified: false },
-      Fri: { available: true, start: "08:00", end: "17:00", modified: false },
-      Sat: { available: false, start: "", end: "", modified: false },
-      Sun: { available: false, start: "", end: "", modified: false },
-    },
-  },
-];
-
-export default function DispatcherAvailability() {
-  const [drivers, setDrivers] = useState(INITIAL_DRIVERS);
-  const availableCount = drivers.filter((d) =>
-    Object.values(d.availability).some((a) => a.available),
-  ).length;
-
-  const toggleAvailability = (driverId: string, day: string) => {
-    setDrivers((prev) =>
-      prev.map((d) => {
-        if (d.id !== driverId) return d;
-        const dayAvail = d.availability[day];
-        return {
-          ...d,
-          availability: {
-            ...d.availability,
-            [day]: {
-              ...dayAvail,
-              available: !dayAvail.available,
-              modified: true,
-              start: !dayAvail.available
-                ? d.defaultShift.split("-")[0]
-                : "",
-              end: !dayAvail.available ? d.defaultShift.split("-")[1] : "",
-            },
-          },
-        };
-      }),
-    );
-  };
+function DriverDayCell({
+  driver,
+  date,
+  row,
+  onUpdate,
+}: {
+  driver: Driver;
+  date: Date;
+  row: AvailabilityRow | undefined;
+  onUpdate: (data: {
+    available?: boolean;
+    shiftStartOverride?: string | null;
+    shiftEndOverride?: string | null;
+  }) => void;
+}) {
+  const { t } = useTranslation();
+  const available = row?.available ?? true;
+  const shiftStart = row?.shiftStartOverride ?? driver.shiftStart;
+  const shiftEnd = row?.shiftEndOverride ?? driver.shiftEnd;
+  const hasOverride = !!(row?.shiftStartOverride || row?.shiftEndOverride);
+  const isToday = isSameDay(date, new Date());
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">
-            Driver Availability
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Week of March 1, 2026 • {availableCount} drivers with availability
-          </p>
-        </div>
-        <Button size="sm">
-          <Save className="w-4 h-4 mr-2" /> Save Changes
-        </Button>
-      </div>
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          className={`group w-full text-left rounded-md border transition-colors p-2 hover:border-primary/40 ${
+            available
+              ? "border-tms-success/30 bg-tms-success-light/30"
+              : "border-tms-error/30 bg-tms-error-light/20"
+          } ${isToday ? "ring-2 ring-primary/40" : ""}`}
+        >
+          <div className="flex items-center justify-between mb-1">
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                available ? "bg-tms-success" : "bg-tms-error"
+              }`}
+            />
+            {hasOverride && (
+              <Badge variant="outline" className="text-[9px] px-1 py-0">
+                {t("dispatcher.availability.shiftOverride")}
+              </Badge>
+            )}
+          </div>
+          <div className="text-[10px] text-foreground font-mono">
+            {available ? `${shiftStart}–${shiftEnd}` : t("dispatcher.availability.off")}
+          </div>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          className="z-50 w-64 rounded-md border border-border bg-popover p-4 shadow-lg"
+          sideOffset={6}
+        >
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-display font-semibold text-foreground">
+                {driver.name}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {format(date, "EEE dd MMM yyyy")}
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor={`avail-${driver.id}-${isoDate(date)}`}>{t("dispatcher.availability.available")}</Label>
+              <Switch
+                id={`avail-${driver.id}-${isoDate(date)}`}
+                checked={available}
+                onCheckedChange={(checked) => onUpdate({ available: checked })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px]">{t("dispatcher.availability.shiftStart")}</Label>
+                <Input
+                  type="time"
+                  defaultValue={shiftStart}
+                  className="h-8 text-xs"
+                  onBlur={(e) => {
+                    if (e.target.value !== shiftStart) {
+                      onUpdate({ shiftStartOverride: e.target.value || null });
+                    }
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px]">{t("dispatcher.availability.shiftEnd")}</Label>
+                <Input
+                  type="time"
+                  defaultValue={shiftEnd}
+                  className="h-8 text-xs"
+                  onBlur={(e) => {
+                    if (e.target.value !== shiftEnd) {
+                      onUpdate({ shiftEndOverride: e.target.value || null });
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            {hasOverride && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() =>
+                  onUpdate({
+                    shiftStartOverride: null,
+                    shiftEndOverride: null,
+                  })
+                }
+              >
+                {t("dispatcher.availability.clearOverride")}
+              </Button>
+            )}
+          </div>
+          <Popover.Arrow className="fill-popover" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
 
-      {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-display font-bold text-foreground">
-              {availableCount}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Available Drivers
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-display font-bold text-foreground">
-              96h
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Total Shift Hours
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-display font-bold text-foreground">
-              4
-            </div>
-            <div className="text-xs text-muted-foreground">Vehicle Types</div>
-          </CardContent>
-        </Card>
-      </div>
+export default function DispatcherAvailability() {
+  const { toast } = useToast();
+  const { t: tFn } = useTranslation();
+  const [weekStart, setWeekStart] = useState<Date>(() =>
+    startOfWeek(new Date(), { weekStartsOn: 1 }),
+  );
 
-      {/* Calendar grid */}
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
+  );
+
+  const driversQuery = useDrivers();
+  const drivers = (driversQuery.data ?? []).filter((d) => d.active);
+
+  // Hooks must be called in a stable order — call 7 fixed hooks.
+  const day0 = useAvailability(isoDate(days[0]));
+  const day1 = useAvailability(isoDate(days[1]));
+  const day2 = useAvailability(isoDate(days[2]));
+  const day3 = useAvailability(isoDate(days[3]));
+  const day4 = useAvailability(isoDate(days[4]));
+  const day5 = useAvailability(isoDate(days[5]));
+  const day6 = useAvailability(isoDate(days[6]));
+  const dayQueries = [day0, day1, day2, day3, day4, day5, day6];
+
+  const updateAvailability = useUpdateAvailability();
+
+  const isLoading = driversQuery.isLoading || dayQueries.some((q) => q.isLoading);
+  const isError = driversQuery.isError || dayQueries.some((q) => q.isError);
+
+  function findRow(driverId: string, dayIndex: number): AvailabilityRow | undefined {
+    return dayQueries[dayIndex].data?.find((r) => r.driverId === driverId);
+  }
+
+  async function handleUpdate(
+    driverId: string,
+    date: string,
+    data: {
+      available?: boolean;
+      shiftStartOverride?: string | null;
+      shiftEndOverride?: string | null;
+    },
+  ) {
+    try {
+      await updateAvailability.mutateAsync({
+        driverId,
+        data: { date, ...data },
+      });
+    } catch (err) {
+      toast({
+        title: tFn("common.updateFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <PageHeader
+        title={tFn("dispatcher.availability.title")}
+        subtitle={tFn("dispatcher.availability.subtitle")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekStart(addDays(weekStart, -7))}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-display font-semibold whitespace-nowrap">
+              {format(weekStart, "dd MMM")} –{" "}
+              {format(addDays(weekStart, 6), "dd MMM yyyy")}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setWeekStart(addDays(weekStart, 7))}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+              }
+            >
+              {tFn("common.today")}
+            </Button>
+          </div>
+        }
+      />
+
       <Card>
-        <CardContent className="p-0 overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left p-3 text-sm font-medium text-muted-foreground w-48">
-                  Driver
-                </th>
-                {DAYS.map((d) => (
-                  <th
-                    key={d}
-                    className="text-center p-3 text-sm font-medium text-muted-foreground w-20"
-                  >
-                    {d}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {drivers.map((driver) => (
-                <tr
-                  key={driver.id}
-                  className="border-b border-border last:border-0"
-                >
-                  <td className="p-3">
-                    <div className="font-medium text-sm">{driver.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {driver.depot} • {driver.vehicle}
-                    </div>
-                  </td>
-                  {DAYS.map((day) => {
-                    const a = driver.availability[day];
-                    return (
-                      <td key={day} className="p-2 text-center">
-                        <button
-                          onClick={() =>
-                            toggleAvailability(driver.id, day)
-                          }
-                          className={`w-full py-2 px-1 rounded-md text-xs font-medium transition-colors ${
-                            a.available
-                              ? a.modified
-                                ? "bg-tms-warning-light text-tms-warning-dark border border-tms-warning/30"
-                                : "bg-tms-success-light text-tms-success-dark"
-                              : a.modified
-                                ? "bg-tms-error-light text-tms-error-dark border border-tms-error/20"
-                                : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {a.available ? `${a.start}-${a.end}` : "Off"}
-                        </button>
+        <CardContent className="p-4">
+          {isError ? (
+            <ErrorState
+              message={tFn("dispatcher.availability.noActiveDriversHint")}
+              onRetry={() => driversQuery.refetch()}
+            />
+          ) : isLoading && drivers.length === 0 ? (
+            <Skeleton className="h-64 w-full" />
+          ) : drivers.length === 0 ? (
+            <EmptyState
+              icon={CalendarDays}
+              title={tFn("dispatcher.availability.noActiveDrivers")}
+              description={tFn("dispatcher.availability.noActiveDriversHint")}
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-separate border-spacing-1">
+                <thead>
+                  <tr>
+                    <th className="text-left text-xs font-display text-muted-foreground ps-1 sticky start-0 bg-background z-10">
+                      {tFn("admin.dashboard.drivers")}
+                    </th>
+                    {days.map((d) => (
+                      <th
+                        key={isoDate(d)}
+                        className="text-center text-xs font-display text-muted-foreground"
+                      >
+                        <div>{format(d, "EEE")}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground/70">
+                          {format(d, "dd/MM")}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {drivers.map((driver) => (
+                    <tr key={driver.id}>
+                      <td className="pe-2 py-1 sticky start-0 bg-background z-10">
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center">
+                            <span className="text-[10px] font-semibold text-primary">
+                              {driver.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-foreground truncate max-w-[140px]">
+                              {driver.name}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {driver.shiftStart}–{driver.shiftEnd}
+                            </div>
+                          </div>
+                        </div>
                       </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      {days.map((d, idx) => {
+                        const date = isoDate(d);
+                        const row = findRow(driver.id, idx);
+                        return (
+                          <td key={date} className="min-w-[100px] align-top">
+                            <DriverDayCell
+                              driver={driver}
+                              date={d}
+                              row={row}
+                              onUpdate={(data) => handleUpdate(driver.id, date, data)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {updateAvailability.isPending && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-3">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              {tFn("common.loading")}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-tms-success-light border border-tms-success/30" />{" "}
-          Available (default)
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-tms-warning-light border border-tms-warning/30" />{" "}
-          Modified
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-muted" /> Unavailable
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded bg-tms-error-light border border-tms-error/30" />{" "}
-          Marked Off
-        </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <Settings2 className="w-3 h-3" />
+        Click a cell to set availability or override the day&apos;s shift hours.
       </div>
     </div>
   );

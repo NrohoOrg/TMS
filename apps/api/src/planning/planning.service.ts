@@ -4,12 +4,15 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JobStatus, PlanStatus, Prisma, StopStatus, StopType, TaskStatus } from '@prisma/client';
 import { JobsOptions, Queue } from 'bullmq';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { SmsService } from '../sms/sms.service';
 import { OptimizeDto } from './dto/optimize.dto';
 import { ReportsQueryDto } from './dto/reports-query.dto';
 import { UpdateStopStatusDto } from './dto/update-stop-status.dto';
@@ -39,7 +42,6 @@ type RouteStopForRecalc = {
     dropoffLat: number;
     dropoffLng: number;
     pickupServiceMinutes: number;
-    dropoffServiceMinutes: number;
   };
 };
 
@@ -84,6 +86,7 @@ export type PlanDetailsResponse = {
   routes: Array<{
     driverId: string;
     driverName: string;
+    routeId: string;
     totalDistanceKm: number;
     totalTimeMinutes: number;
     stops: Array<{
@@ -94,11 +97,17 @@ export type PlanDetailsResponse = {
       etaSeconds: number;
       departureSeconds: number;
       status: string;
+      locked: boolean;
+      manuallyAssigned: boolean;
       task: {
         title: string;
         pickupAddress: string;
         dropoffAddress: string;
         priority: string;
+        pickupLat: number;
+        pickupLng: number;
+        dropoffLat: number;
+        dropoffLng: number;
       };
     }>;
   }>;
@@ -107,6 +116,10 @@ export type PlanDetailsResponse = {
     title: string;
     pickupAddress: string;
     dropoffAddress: string;
+    pickupLat: number;
+    pickupLng: number;
+    dropoffLat: number;
+    dropoffLng: number;
     priority: string;
     reason: string;
   }>;
@@ -152,6 +165,12 @@ export type DispatcherMonitorResponse = {
     phone: string;
     vehicle: null;
     status: 'on_route' | 'at_stop' | 'completed';
+    /** false if marked unavailable for the day (Availability.available = false
+     *  OR shiftEndOverride set via an Incidents action). */
+    available: boolean;
+    /** When the driver became unavailable today, HH:MM. Null if available
+     *  or if the override has not been applied. */
+    unavailableFromTime: string | null;
     currentStop: {
       stopId: string;
       sequence: number;
@@ -172,6 +191,22 @@ export type DispatcherMonitorResponse = {
     event: string;
     type: 'success' | 'warning' | 'info';
   }>;
+};
+
+export type DispatcherImpactResponse = {
+  date: string;
+  hasPlan: boolean;
+  tasksCompleted: number;
+  tasksAssigned: number;
+  driversActive: number;
+  unassignedCount: number;
+  optimizedDistanceKm: number;
+  naiveBaselineKm: number;
+  kmSaved: number;
+  savingsPercent: number;
+  co2KgSaved: number;
+  fuelLitersSaved: number;
+  dieselCostSavedDZD: number;
 };
 
 export type DispatcherReportsResponse = {
@@ -215,10 +250,14 @@ export type DispatcherReportsResponse = {
 
 @Injectable()
 export class PlanningService {
+  private readonly publishLogger = new Logger('PlanningService.publish');
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(OPTIMIZATION_QUEUE)
     private readonly optimizationQueue: Queue<OptimizationQueuePayload>,
+    private readonly smsService: SmsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async optimize(dto: OptimizeDto, currentUser: AuthenticatedUser): Promise<OptimizeJobResponse> {
@@ -229,6 +268,7 @@ export class PlanningService {
       this.prisma.task.count({
         where: {
           status: TaskStatus.pending,
+          approvalStatus: 'approved',
           pickupWindowStart: {
             gte: start,
             lt: end,
@@ -388,7 +428,11 @@ export class PlanningService {
                   select: {
                     title: true,
                     pickupAddress: true,
+                    pickupLat: true,
+                    pickupLng: true,
                     dropoffAddress: true,
+                    dropoffLat: true,
+                    dropoffLng: true,
                     priority: true,
                   },
                 },
@@ -409,7 +453,31 @@ export class PlanningService {
       select: { resultSnapshot: true },
     });
 
-    const unassignedWithReason = this.extractUnassigned(latestJob?.resultSnapshot ?? null);
+    // The optimizer's resultSnapshot freezes what it couldn't fit AT THAT
+    // RUN. Mid-day re-optimization and urgent-interrupt later splice some of
+    // those tasks onto routes, but the snapshot never gets rewritten — so we
+    // must filter out anything that has actually been placed on a stop or
+    // whose Task.status is no longer `pending` (assigned/cancelled).
+    const stopTaskIds = new Set(
+      plan.routes.flatMap((r) => r.stops.map((s) => s.taskId)),
+    );
+    const rawUnassigned = this.extractUnassigned(latestJob?.resultSnapshot ?? null);
+    const stillPendingIds = rawUnassigned.length
+      ? new Set(
+          (
+            await this.prisma.task.findMany({
+              where: {
+                id: { in: rawUnassigned.map((u) => u.taskId) },
+                status: TaskStatus.pending,
+              },
+              select: { id: true },
+            })
+          ).map((t) => t.id),
+        )
+      : new Set<string>();
+    const unassignedWithReason = rawUnassigned.filter(
+      (entry) => !stopTaskIds.has(entry.taskId) && stillPendingIds.has(entry.taskId),
+    );
     const unassignedTaskIds = unassignedWithReason.map((entry) => entry.taskId);
     const unassignedTasks = unassignedTaskIds.length
       ? await this.prisma.task.findMany({
@@ -418,7 +486,11 @@ export class PlanningService {
             id: true,
             title: true,
             pickupAddress: true,
+            pickupLat: true,
+            pickupLng: true,
             dropoffAddress: true,
+            dropoffLat: true,
+            dropoffLng: true,
             priority: true,
           },
         })
@@ -432,6 +504,7 @@ export class PlanningService {
       routes: plan.routes.map((route) => ({
         driverId: route.driverId,
         driverName: route.driver.name,
+        routeId: route.id,
         totalDistanceKm: Number((route.totalDistanceM / 1000).toFixed(2)),
         totalTimeMinutes: Number((route.totalTimeS / 60).toFixed(1)),
         stops: route.stops.map((stop) => ({
@@ -442,10 +515,16 @@ export class PlanningService {
           etaSeconds: stop.etaS,
           departureSeconds: stop.departureS,
           status: stop.status,
+          locked: stop.locked,
+          manuallyAssigned: stop.manuallyAssigned,
           task: {
             title: stop.task.title,
             pickupAddress: stop.task.pickupAddress,
+            pickupLat: stop.task.pickupLat,
+            pickupLng: stop.task.pickupLng,
             dropoffAddress: stop.task.dropoffAddress,
+            dropoffLat: stop.task.dropoffLat,
+            dropoffLng: stop.task.dropoffLng,
             priority: stop.task.priority,
           },
         })),
@@ -457,6 +536,10 @@ export class PlanningService {
           title: task?.title ?? '',
           pickupAddress: task?.pickupAddress ?? '',
           dropoffAddress: task?.dropoffAddress ?? '',
+          pickupLat: task?.pickupLat ?? 0,
+          pickupLng: task?.pickupLng ?? 0,
+          dropoffLat: task?.dropoffLat ?? 0,
+          dropoffLng: task?.dropoffLng ?? 0,
           priority: task?.priority ?? 'normal',
           reason: entry.reason,
         };
@@ -489,15 +572,34 @@ export class PlanningService {
       },
       select: {
         id: true,
+        date: true,
         status: true,
         publishedAt: true,
         routes: {
           select: {
             driverId: true,
+            driver: { select: { name: true, phone: true } },
+            stops: {
+              orderBy: { sequence: 'asc' },
+              select: {
+                sequence: true,
+                type: true,
+                etaS: true,
+                task: {
+                  select: {
+                    title: true,
+                    pickupAddress: true,
+                    dropoffAddress: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
     });
+
+    void this.notifyDriversOfPublishedPlan(publishedPlan);
 
     return {
       planId: publishedPlan.id,
@@ -505,6 +607,89 @@ export class PlanningService {
       publishedAt: publishedPlan.publishedAt,
       notifiedDrivers: new Set(publishedPlan.routes.map((route) => route.driverId)).size,
     };
+  }
+
+  private async notifyDriversOfPublishedPlan(plan: {
+    id: string;
+    date: Date;
+    routes: Array<{
+      driverId: string;
+      driver: { name: string; phone: string };
+      stops: Array<{
+        sequence: number;
+        type: StopType;
+        etaS: number;
+        task: { title: string; pickupAddress: string; dropoffAddress: string };
+      }>;
+    }>;
+  }): Promise<void> {
+    const planDateLabel = plan.date.toISOString().slice(0, 10);
+
+    // One SMS per driver, listing their own ordered stops. The test override
+    // (SMS_TEST_OVERRIDE_NUMBER) routes everything to a single number when set
+    // so we can verify wording without spamming real drivers.
+    await Promise.allSettled(
+      plan.routes.map(async (route) => {
+        if (route.stops.length === 0) return;
+        const lines = [`Bonjour ${route.driver.name}, votre tournee du ${planDateLabel}:`];
+        route.stops.forEach((stop, idx) => {
+          const eta = this.formatEtaSeconds(stop.etaS);
+          const address =
+            stop.type === StopType.pickup ? stop.task.pickupAddress : stop.task.dropoffAddress;
+          const action = stop.type === StopType.pickup ? 'Retrait' : 'Livraison';
+          lines.push(`${idx + 1}. ${eta} ${action} - ${stop.task.title} (${address})`);
+        });
+        lines.push('Bonne journee.');
+        const message = lines.join('\n');
+        const destination = this.smsService.resolveDestination(route.driver.phone);
+
+        try {
+          const result = await this.smsService.send(destination, message, 'fr');
+          if (!result.success) {
+            this.publishLogger.warn(
+              `SMS to ${route.driver.name} (${destination}) not delivered: ${result.providerResponse}`,
+            );
+          }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'unknown_error';
+          this.publishLogger.error(
+            `SMS to ${route.driver.name} (${destination}) threw: ${reason}`,
+          );
+        }
+      }),
+    );
+  }
+
+  async sendTestSms(): Promise<{
+    success: boolean;
+    code: string | null;
+    messageId: string | null;
+    providerResponse: string;
+    destination: string;
+  }> {
+    const override = (
+      this.configService.get<string>('SMS_TEST_OVERRIDE_NUMBER') ?? ''
+    ).trim();
+    if (!override) {
+      return {
+        success: false,
+        code: null,
+        messageId: null,
+        providerResponse: 'no_test_override_set',
+        destination: '',
+      };
+    }
+    const message = `TMS test SMS — ${new Date().toISOString()}`;
+    this.publishLogger.log(`Sending test SMS to ${override}`);
+    const result = await this.smsService.send(override, message, 'fr');
+    return { ...result, destination: override };
+  }
+
+  private formatEtaSeconds(etaS: number): string {
+    const total = Math.max(0, Math.floor(etaS));
+    const h = Math.floor(total / 3600) % 24;
+    const m = Math.floor((total % 3600) / 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   }
 
   async updateStopStatus(
@@ -532,7 +717,6 @@ export class PlanningService {
             dropoffLat: true,
             dropoffLng: true,
             pickupServiceMinutes: true,
-            dropoffServiceMinutes: true,
           },
         },
       },
@@ -554,7 +738,7 @@ export class PlanningService {
       where: { id: 1 },
       select: { speedKmh: true },
     });
-    const speedKmh = config?.speedKmh ?? 40;
+    const speedKmh = config?.speedKmh ?? 50;
 
     const actualArrivalS = dto.actualArrivalTime
       ? this.parseTimeToSeconds(dto.actualArrivalTime)
@@ -566,7 +750,6 @@ export class PlanningService {
         ? 0
         : this.getServiceSeconds(stop.type, {
             pickupServiceMinutes: stop.task.pickupServiceMinutes,
-            dropoffServiceMinutes: stop.task.dropoffServiceMinutes,
           });
     const departureS = Math.max(stop.departureS, actualArrivalS + serviceSeconds);
     const completedAt = dto.status === StopStatus.done ? new Date() : null;
@@ -614,7 +797,6 @@ export class PlanningService {
               dropoffLat: true,
               dropoffLng: true,
               pickupServiceMinutes: true,
-              dropoffServiceMinutes: true,
             },
           },
         },
@@ -741,6 +923,23 @@ export class PlanningService {
       };
     }
 
+    // Load availability so the UI can mark drivers as Not Available when
+    // a dispatcher has cut their shift short via the Incidents flow.
+    const availabilityRows = await this.prisma.availability.findMany({
+      where: {
+        date: targetDate,
+        driverId: { in: plan.routes.map((r) => r.driver.id) },
+      },
+      select: {
+        driverId: true,
+        available: true,
+        shiftEndOverride: true,
+      },
+    });
+    const availabilityByDriverId = new Map(
+      availabilityRows.map((row) => [row.driverId, row]),
+    );
+
     const stops = plan.routes.flatMap((route) => route.stops);
     const taskStops = new Map<string, (typeof stops)[number][]>();
     for (const stop of stops) {
@@ -793,12 +992,24 @@ export class PlanningService {
         route.stops.find((stop) => stop.status === StopStatus.pending) ??
         null;
 
+      const availability = availabilityByDriverId.get(route.driver.id);
+      const unavailableFromTime = availability?.shiftEndOverride ?? null;
+      // Driver is off when explicitly marked unavailable OR when an early
+      // shift-end override is in place (the Incidents "Mark Unavailable"
+      // flow uses this without flipping the available flag).
+      const available =
+        !!availability && (availability.available === false || availability.shiftEndOverride)
+          ? false
+          : true;
+
       return {
         id: route.driver.id,
         name: route.driver.name,
         phone: route.driver.phone,
         vehicle: null,
         status,
+        available,
+        unavailableFromTime,
         currentStop: currentStop
           ? {
               stopId: currentStop.id,
@@ -886,6 +1097,153 @@ export class PlanningService {
               ? 'warning'
               : 'info',
       })),
+    };
+  }
+
+  /**
+   * Daily impact KPIs. Compares the optimized routes for the date against a
+   * naive single-trip-per-task baseline (depot → pickup → dropoff → depot
+   * for every assigned task) to estimate distance saved, then derives CO2,
+   * fuel, and cost savings using configurable constants on `Config`.
+   *
+   * Honest framing: the baseline assumes every task would otherwise be done
+   * as its own round trip from the depot. That is an industry-standard VRP
+   * benchmark, not a measurement of what would actually happen without the
+   * system, but it gives a defensible, monotonic "impact" headline number.
+   */
+  async getImpact(date?: string): Promise<DispatcherImpactResponse> {
+    const targetDate = date ? this.parseDate(date) : this.parseDate(this.toDateString(new Date()));
+    const dateString = this.toDateString(targetDate);
+
+    const [config, plan] = await Promise.all([
+      this.prisma.config.findUnique({
+        where: { id: 1 },
+        select: {
+          co2GramsPerKm: true,
+          fuelLPer100Km: true,
+          dieselPricePerLiterDZD: true,
+        },
+      }),
+      this.prisma.plan.findFirst({
+        where: { date: targetDate, status: PlanStatus.published },
+        orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }],
+        include: {
+          routes: {
+            include: {
+              driver: { select: { depotLat: true, depotLng: true } },
+              stops: {
+                select: {
+                  status: true,
+                  type: true,
+                  taskId: true,
+                  task: {
+                    select: {
+                      pickupLat: true,
+                      pickupLng: true,
+                      dropoffLat: true,
+                      dropoffLng: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const co2GramsPerKm = config?.co2GramsPerKm ?? 171;
+    const fuelLPer100Km = config?.fuelLPer100Km ?? 8;
+    const dieselPricePerLiterDZD = config?.dieselPricePerLiterDZD ?? 29;
+
+    const empty: DispatcherImpactResponse = {
+      date: dateString,
+      hasPlan: false,
+      tasksCompleted: 0,
+      tasksAssigned: 0,
+      driversActive: 0,
+      unassignedCount: 0,
+      optimizedDistanceKm: 0,
+      naiveBaselineKm: 0,
+      kmSaved: 0,
+      savingsPercent: 0,
+      co2KgSaved: 0,
+      fuelLitersSaved: 0,
+      dieselCostSavedDZD: 0,
+    };
+    if (!plan) return empty;
+
+    // Throughput
+    let tasksCompleted = 0;
+    const assignedTaskIds = new Set<string>();
+    let optimizedDistanceM = 0;
+    let naiveBaselineM = 0;
+
+    for (const route of plan.routes) {
+      optimizedDistanceM += route.totalDistanceM;
+      const depotLat = route.driver.depotLat;
+      const depotLng = route.driver.depotLng;
+
+      // Tasks placed on this route — accumulate the naive baseline:
+      // depot → pickup → dropoff → depot for every distinct task.
+      const seenTasks = new Set<string>();
+      for (const stop of route.stops) {
+        if (seenTasks.has(stop.taskId)) continue;
+        seenTasks.add(stop.taskId);
+        assignedTaskIds.add(stop.taskId);
+        naiveBaselineM +=
+          haversineMeters(depotLat, depotLng, stop.task.pickupLat, stop.task.pickupLng) +
+          haversineMeters(
+            stop.task.pickupLat,
+            stop.task.pickupLng,
+            stop.task.dropoffLat,
+            stop.task.dropoffLng,
+          ) +
+          haversineMeters(stop.task.dropoffLat, stop.task.dropoffLng, depotLat, depotLng);
+      }
+
+      // Completed task = its dropoff stop was marked done.
+      const doneTaskIds = new Set<string>();
+      for (const stop of route.stops) {
+        if (stop.type === StopType.dropoff && stop.status === StopStatus.done) {
+          doneTaskIds.add(stop.taskId);
+        }
+      }
+      tasksCompleted += doneTaskIds.size;
+    }
+
+    // Unassigned: pending tasks for the date that are NOT on any route in this plan.
+    const { start, end } = this.getDayRange(targetDate);
+    const unassignedCount = await this.prisma.task.count({
+      where: {
+        status: TaskStatus.pending,
+        pickupWindowStart: { gte: start, lt: end },
+        id: { notIn: [...assignedTaskIds] },
+      },
+    });
+
+    const optimizedDistanceKm = optimizedDistanceM / 1000;
+    const naiveBaselineKm = naiveBaselineM / 1000;
+    const kmSaved = Math.max(0, naiveBaselineKm - optimizedDistanceKm);
+    const savingsPercent = naiveBaselineKm > 0 ? (kmSaved / naiveBaselineKm) * 100 : 0;
+    const co2KgSaved = (kmSaved * co2GramsPerKm) / 1000;
+    const fuelLitersSaved = (kmSaved * fuelLPer100Km) / 100;
+    const dieselCostSavedDZD = fuelLitersSaved * dieselPricePerLiterDZD;
+
+    return {
+      date: dateString,
+      hasPlan: true,
+      tasksCompleted,
+      tasksAssigned: assignedTaskIds.size,
+      driversActive: plan.routes.length,
+      unassignedCount,
+      optimizedDistanceKm: round1(optimizedDistanceKm),
+      naiveBaselineKm: round1(naiveBaselineKm),
+      kmSaved: round1(kmSaved),
+      savingsPercent: round1(savingsPercent),
+      co2KgSaved: round1(co2KgSaved),
+      fuelLitersSaved: round1(fuelLitersSaved),
+      dieselCostSavedDZD: Math.round(dieselCostSavedDZD),
     };
   }
 
@@ -1153,8 +1511,15 @@ export class PlanningService {
   }
 
   private isAllowedStopTransition(current: StopStatus, next: StopStatus): boolean {
+    // R5.4: dispatcher confirms task progress by phone via two buttons
+    // ("Task Started" / "Task Done"), so pending → done in one step is valid
+    // alongside the legacy pending → arrived → done flow.
     if (current === StopStatus.pending) {
-      return next === StopStatus.arrived || next === StopStatus.skipped;
+      return (
+        next === StopStatus.arrived ||
+        next === StopStatus.done ||
+        next === StopStatus.skipped
+      );
     }
 
     if (current === StopStatus.arrived) {
@@ -1166,9 +1531,9 @@ export class PlanningService {
 
   private getServiceSeconds(
     type: StopType,
-    task: { pickupServiceMinutes: number; dropoffServiceMinutes: number },
+    task: { pickupServiceMinutes: number },
   ): number {
-    return type === StopType.pickup ? task.pickupServiceMinutes * 60 : task.dropoffServiceMinutes * 60;
+    return type === StopType.pickup ? task.pickupServiceMinutes * 60 : 0;
   }
 
   private getStopCoordinates(
@@ -1200,7 +1565,7 @@ export class PlanningService {
       return 0;
     }
 
-    const normalizedSpeedKmh = speedKmh > 0 ? speedKmh : 40;
+    const normalizedSpeedKmh = speedKmh > 0 ? speedKmh : 50;
     const metersPerSecond = (normalizedSpeedKmh * 1000) / 3600;
     return Math.max(1, Math.round(distanceMeters / metersPerSecond));
   }
@@ -1346,4 +1711,20 @@ export class PlanningService {
       return [{ taskId, reason }];
     });
   }
+}
+
+// ── Module-private helpers used by getImpact ───────────────────────────
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }

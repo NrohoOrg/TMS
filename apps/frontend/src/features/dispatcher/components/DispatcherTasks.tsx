@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -14,236 +27,437 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Plus,
   Search,
-  Upload,
-  MapPin,
-  Clock,
   ArrowDown,
   ArrowUp,
+  Check,
   LayoutList,
-  Grid3X3,
-  Map,
+  Loader2,
+  Map as MapIcon,
+  Sparkles,
+  Trash2,
+  Pencil,
+  ClipboardList,
+  Users,
+  X,
 } from "lucide-react";
-import { MOCK_TASKS } from "@/lib/mock-data";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { TableSkeleton } from "@/components/ui/skeleton";
+import {
+  useApproveTask,
+  useDeleteTask,
+  useDrivers,
+  useJobStatus,
+  useRejectTask,
+  useTasks,
+  useTriggerOptimize,
+} from "@/features/shared/hooks";
+import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import type { Task } from "@/types/api";
+import { TaskFormDrawer } from "./TaskFormDrawer";
+import { ImpactStrip } from "./ImpactStrip";
+import { MapView, getDriverColor, type MapMarker, type MapRoute } from "@/components/map";
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const PRIORITY_STYLES: Record<string, string> = {
   urgent: "bg-tms-error text-destructive-foreground",
-  high: "bg-tms-warning text-accent-foreground",
   normal: "bg-muted text-muted-foreground",
-  low: "bg-muted/50 text-muted-foreground",
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  planned: "bg-tms-info-light text-tms-info-dark",
+  pending: "bg-muted text-muted-foreground",
   assigned: "bg-tms-success-light text-primary",
-  in_progress: "bg-tms-warning-light text-tms-warning-dark",
-  completed: "bg-tms-success-light text-tms-success-dark",
   cancelled: "bg-tms-error-light text-tms-error-dark",
 };
 
-export default function DispatcherTasks() {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"table" | "card" | "map">("table");
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  const isToday = d.toDateString() === new Date().toDateString();
+  return isToday ? time : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+}
 
-  const filtered = MOCK_TASKS.filter((t) => {
-    const ms =
-      t.id.toLowerCase().includes(search.toLowerCase()) ||
-      t.pickup.toLowerCase().includes(search.toLowerCase()) ||
-      t.dropoff.toLowerCase().includes(search.toLowerCase()) ||
-      t.contact.toLowerCase().includes(search.toLowerCase());
-    const mst = statusFilter === "all" || t.status === statusFilter;
-    const mp = priorityFilter === "all" || t.priority === priorityFilter;
-    return ms && mst && mp;
+function tasksFromResponse(data: unknown): Task[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data as Task[];
+  const obj = data as { data?: Task[]; items?: Task[] };
+  return obj.data ?? obj.items ?? [];
+}
+
+function totalFromResponse(data: unknown): number {
+  if (!data) return 0;
+  if (Array.isArray(data)) return data.length;
+  const obj = data as { total?: number };
+  return obj.total ?? tasksFromResponse(data).length;
+}
+
+export default function DispatcherTasks() {
+  const { toast } = useToast();
+  const { t } = useTranslation();
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [view, setView] = useState<"table" | "map">("table");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editing, setEditing] = useState<Task | null>(null);
+  const [optimizeDialogOpen, setOptimizeDialogOpen] = useState(false);
+  const [optimizeDate, setOptimizeDate] = useState(todayStr());
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  const { data, isLoading, isError, error, refetch } = useTasks({
+    page,
+    limit: 50,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    priority: priorityFilter !== "all" ? priorityFilter : undefined,
   });
 
+  const deleteTask = useDeleteTask();
+  const approveTask = useApproveTask();
+  const rejectTask = useRejectTask();
+  const driversQuery = useDrivers();
+  const triggerOptimize = useTriggerOptimize();
+  const jobStatusQuery = useJobStatus(activeJobId);
+
+  const activeDrivers = (driversQuery.data ?? []).filter((d) => d.active);
+
+  // Watch the optimization job: navigate to Planning on success, toast on failure.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!jobStatusQuery.data) return;
+    const { status, planId, error: jobError } = jobStatusQuery.data;
+    if (status === "completed" && planId) {
+      toast({ title: t("dispatcher.tasks.planGenerated"), description: t("dispatcher.tasks.optimizationComplete") });
+      setActiveJobId(null);
+      setOptimizeDialogOpen(false);
+      router.push("/dispatcher/planning");
+    } else if (status === "failed") {
+      toast({
+        title: t("dispatcher.tasks.optimizationFailed"),
+        description: jobError ?? t("common.unknownError"),
+        variant: "destructive",
+      });
+      setActiveJobId(null);
+    }
+  }, [jobStatusQuery.data, router, toast, t]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  async function handleConfirmOptimize() {
+    try {
+      const res = await triggerOptimize.mutateAsync({
+        date: optimizeDate,
+        returnToDepot: true,
+      });
+      setActiveJobId(res.jobId);
+      toast({ title: t("dispatcher.tasks.optimizationQueued") });
+    } catch (err) {
+      toast({
+        title: t("dispatcher.tasks.optimizationFailedToStart"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  const tasks = useMemo(() => tasksFromResponse(data), [data]);
+  const total = useMemo(() => totalFromResponse(data), [data]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return tasks;
+    return tasks.filter(
+      (task) =>
+        (task.title ?? "").toLowerCase().includes(q) ||
+        task.pickupAddress.toLowerCase().includes(q) ||
+        task.dropoffAddress.toLowerCase().includes(q),
+    );
+  }, [tasks, search]);
+
+  const pendingApproval = useMemo(
+    () => filtered.filter((t) => t.approvalStatus === "pending_approval"),
+    [filtered],
+  );
+  const standardTasks = useMemo(
+    () => filtered.filter((t) => t.approvalStatus !== "pending_approval"),
+    [filtered],
+  );
+
+  async function handleApprove(task: Task) {
+    try {
+      await approveTask.mutateAsync(task.id);
+      toast({ title: "Task approved" });
+    } catch (err) {
+      toast({
+        title: "Approve failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleReject(task: Task) {
+    try {
+      await rejectTask.mutateAsync(task.id);
+      toast({ title: "Task rejected" });
+    } catch (err) {
+      toast({
+        title: "Reject failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  }
+
+  const pendingCount = tasks.filter((task) => task.status === "pending").length;
+
+  const pendingForDateCount = useMemo(() => {
+    return tasks.filter(
+      (task) =>
+        task.status === "pending" &&
+        new Date(task.pickupWindowStart).toISOString().slice(0, 10) === optimizeDate,
+    ).length;
+  }, [tasks, optimizeDate]);
+
+  const mapMarkers: MapMarker[] = useMemo(() => {
+    const out: MapMarker[] = [];
+    filtered.forEach((task, idx) => {
+      const color = getDriverColor(idx);
+      out.push({
+        id: `${task.id}-pickup`,
+        position: [task.pickupLat, task.pickupLng],
+        kind: "pickup",
+        label: "P",
+        color,
+        popup: (
+          <div className="text-xs">
+            <div className="font-display font-semibold">{task.title}</div>
+            <div className="text-muted-foreground">Pickup — {task.pickupAddress}</div>
+          </div>
+        ),
+        onClick: () => {
+          setEditing(task);
+          setDrawerOpen(true);
+        },
+      });
+      out.push({
+        id: `${task.id}-dropoff`,
+        position: [task.dropoffLat, task.dropoffLng],
+        kind: "dropoff",
+        label: "D",
+        color,
+        popup: (
+          <div className="text-xs">
+            <div className="font-display font-semibold">{task.title}</div>
+            <div className="text-muted-foreground">Dropoff — {task.dropoffAddress}</div>
+          </div>
+        ),
+        onClick: () => {
+          setEditing(task);
+          setDrawerOpen(true);
+        },
+      });
+    });
+    return out;
+  }, [filtered]);
+
+  const mapRoutes: MapRoute[] = useMemo(
+    () =>
+      filtered.map((task, idx) => ({
+        id: `${task.id}-link`,
+        color: getDriverColor(idx),
+        useOsrm: false,
+        stops: [
+          [task.pickupLat, task.pickupLng],
+          [task.dropoffLat, task.dropoffLng],
+        ],
+      })),
+    [filtered],
+  );
+
+  async function handleDelete(id: string) {
+    if (!confirm(t("dispatcher.tasks.confirmDelete"))) return;
+    try {
+      await deleteTask.mutateAsync(id);
+      toast({ title: t("dispatcher.tasks.taskDeleted") });
+    } catch (err) {
+      toast({
+        title: t("common.deleteFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">
-            Task Management
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {MOCK_TASKS.length} tasks today •{" "}
-            {MOCK_TASKS.filter((t) => t.status === "draft").length} drafts
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Upload className="w-4 h-4 mr-2" /> Bulk Import
-          </Button>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="w-4 h-4 mr-2" /> Create Task
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle className="font-display">
-                  Create New Task
-                </DialogTitle>
-              </DialogHeader>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setDialogOpen(false);
-                }}
-                className="space-y-4 mt-2 max-h-[60vh] overflow-y-auto pr-2"
-              >
-                <div className="space-y-2">
-                  <Label>Task Type</Label>
-                  <Select defaultValue="person">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="person">Person Transport</SelectItem>
-                      <SelectItem value="delivery">Item Delivery</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Pickup Address</Label>
-                    <Input placeholder="Enter pickup location" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Dropoff Address</Label>
-                    <Input placeholder="Enter dropoff location" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-2">
-                    <Label>Pickup Earliest</Label>
-                    <Input type="time" defaultValue="08:00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Pickup Latest</Label>
-                    <Input type="time" defaultValue="09:00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Delivery Deadline</Label>
-                    <Input type="time" defaultValue="12:00" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Priority</Label>
-                    <Select defaultValue="normal">
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {["low", "normal", "high", "urgent"].map((p) => (
-                          <SelectItem key={p} value={p} className="capitalize">
-                            {p}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Capacity Units</Label>
-                    <Input type="number" defaultValue={1} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Contact Name</Label>
-                    <Input placeholder="Contact name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Contact Phone</Label>
-                    <Input placeholder="+213 555 0000" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Instructions</Label>
-                  <Textarea
-                    placeholder="Special instructions for driver..."
-                    rows={2}
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit">Save Task</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <PageHeader
+        title={t("dispatcher.tasks.title")}
+        subtitle={t("dispatcher.tasks.totalSummary", { total, pending: pendingCount })}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setOptimizeDialogOpen(true)}
+              disabled={triggerOptimize.isPending || activeJobId !== null}
+            >
+              {activeJobId ? (
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 me-2" />
+              )}
+              {t("dispatcher.tasks.runOptimizer")}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEditing(null);
+                setDrawerOpen(true);
+              }}
+            >
+              <Plus className="w-4 h-4 me-2" /> {t("dispatcher.tasks.createTask")}
+            </Button>
+          </div>
+        }
+      />
+
+      <ImpactStrip />
+
+      {pendingApproval.length > 0 && (
+        <Card className="border-amber-300/60 bg-amber-50/40">
+          <CardHeader className="pb-3">
+            <h3 className="text-sm font-display font-semibold text-amber-900">
+              {t("dispatcher.tasks.pendingApprovalTitle", {
+                count: pendingApproval.length,
+              })}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {t("dispatcher.tasks.pendingApprovalHint")}
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table className="[&_th]:border-e [&_th]:border-border [&_th:last-child]:border-e-0 [&_td]:border-e [&_td]:border-border [&_td:last-child]:border-e-0">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("dispatcher.tasks.tableTitle")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tablePickup")}</TableHead>
+                  <TableHead>{t("common.time")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tablePriority")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tableStatus")}</TableHead>
+                  <TableHead className="w-24">{t("dispatcher.tasks.tableActions")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingApproval.map((task) => (
+                  <TableRow key={task.id}>
+                    <TableCell className="text-sm">{task.title || "—"}</TableCell>
+                    <TableCell>
+                      <div className="space-y-0.5 text-xs">
+                        <div className="flex items-center gap-1">
+                          <ArrowUp className="w-3 h-3 text-tms-success" />
+                          <span className="truncate max-w-[180px]">{task.pickupAddress}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ArrowDown className="w-3 h-3 text-tms-error" />
+                          <span className="truncate max-w-[180px]">{task.dropoffAddress}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {formatTime(task.pickupWindowStart)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`text-[10px] ${PRIORITY_STYLES[task.priority]}`}>
+                        {t(`priority.${task.priority}`)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="text-[10px] bg-amber-200 text-amber-900">
+                        {t("dispatcher.tasks.awaitingApproval")}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-tms-success hover:bg-tms-success-light"
+                          disabled={approveTask.isPending}
+                          onClick={() => handleApprove(task)}
+                          title={t("dispatcher.tasks.approve")}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-tms-error hover:bg-tms-error-light"
+                          disabled={rejectTask.isPending}
+                          onClick={() => handleReject(task)}
+                          title={t("dispatcher.tasks.reject")}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-3 flex-1">
               <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search tasks..."
+                  placeholder={t("dispatcher.tasks.searchPlaceholder")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 h-9"
+                  className="ps-9 h-9"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-36 h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  {[
-                    "draft",
-                    "planned",
-                    "assigned",
-                    "in_progress",
-                    "completed",
-                    "cancelled",
-                  ].map((s) => (
+                  <SelectItem value="all">{t("common.all")} {t("common.status")}</SelectItem>
+                  {["pending", "assigned", "cancelled"].map((s) => (
                     <SelectItem key={s} value={s} className="capitalize">
-                      {s.replace("_", " ")}
+                      {t(`status.${s}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-32 h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Priority</SelectItem>
-                  {["urgent", "high", "normal", "low"].map((p) => (
+                  <SelectItem value="all">{t("common.all")} {t("common.priority")}</SelectItem>
+                  {["urgent", "normal"].map((p) => (
                     <SelectItem key={p} value={p} className="capitalize">
-                      {p}
+                      {t(`priority.${p}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -253,16 +467,15 @@ export default function DispatcherTasks() {
               {(
                 [
                   ["table", LayoutList],
-                  ["card", Grid3X3],
-                  ["map", Map],
+                  ["map", MapIcon],
                 ] as const
               ).map(([mode, Icon]) => (
                 <Button
                   key={mode}
-                  variant={viewMode === mode ? "secondary" : "ghost"}
+                  variant={view === mode ? "secondary" : "ghost"}
                   size="sm"
                   className="h-7 w-7 p-0"
-                  onClick={() => setViewMode(mode as "table" | "card" | "map")}
+                  onClick={() => setView(mode)}
                 >
                   <Icon className="w-3.5 h-3.5" />
                 </Button>
@@ -271,133 +484,201 @@ export default function DispatcherTasks() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {viewMode === "table" ? (
-            <Table>
+          {isLoading ? (
+            <div className="p-4">
+              <TableSkeleton rows={6} />
+            </div>
+          ) : isError ? (
+            <div className="p-4">
+              <ErrorState
+                message={error instanceof Error ? error.message : t("common.unknownError")}
+                onRetry={() => refetch()}
+              />
+            </div>
+          ) : view === "map" ? (
+            filtered.length === 0 ? (
+              <div className="p-6">
+                <EmptyState
+                  icon={ClipboardList}
+                  title={t("dispatcher.tasks.noTasksToMap")}
+                  description={t("dispatcher.tasks.createFirst")}
+                />
+              </div>
+            ) : (
+              <div className="p-4">
+                <MapView markers={mapMarkers} routes={mapRoutes} height={520} />
+              </div>
+            )
+          ) : (
+            <Table className="[&_th]:border-e [&_th]:border-border [&_th:last-child]:border-e-0 [&_td]:border-e [&_td]:border-border [&_td:last-child]:border-e-0">
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Route</TableHead>
-                  <TableHead>Time Window</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Driver</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tableTitle")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tablePickup")}</TableHead>
+                  <TableHead>{t("common.time")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tablePriority")}</TableHead>
+                  <TableHead>{t("dispatcher.tasks.tableStatus")}</TableHead>
+                  <TableHead className="w-24">{t("dispatcher.tasks.tableActions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((t) => (
-                  <TableRow
-                    key={t.id}
-                    className={
-                      t.priority === "urgent" ? "bg-tms-error-light/30" : ""
-                    }
-                  >
-                    <TableCell className="font-mono text-sm font-medium">
-                      {t.id}
-                    </TableCell>
-                    <TableCell className="text-sm capitalize">
-                      {t.type === "person" ? "👤 Person" : "📦 Delivery"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-0.5 text-xs">
-                        <div className="flex items-center gap-1">
-                          <ArrowUp className="w-3 h-3 text-tms-success" />
-                          {t.pickup}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <ArrowDown className="w-3 h-3 text-tms-error" />
-                          {t.dropoff}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-muted-foreground" />
-                          {t.pickupWindow}
-                        </div>
-                        <div className="text-muted-foreground">
-                          Deadline: {t.deadline}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={`text-[10px] ${PRIORITY_STYLES[t.priority]}`}
-                      >
-                        {t.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={`text-[10px] ${STATUS_STYLES[t.status]}`}
-                      >
-                        {t.status.replace("_", " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {t.driver || "—"}
+                {standardTasks.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10">
+                      <EmptyState
+                        icon={ClipboardList}
+                        title={t("dispatcher.tasks.noTasksFound")}
+                        description={t("dispatcher.tasks.createFirst")}
+                      />
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  <>
+                    {standardTasks.map((task) => (
+                      <TableRow
+                        key={task.id}
+                        className={task.priority === "urgent" ? "bg-tms-error-light/30" : ""}
+                      >
+                        <TableCell className="text-sm">{task.title || "—"}</TableCell>
+                        <TableCell>
+                          <div className="space-y-0.5 text-xs">
+                            <div className="flex items-center gap-1">
+                              <ArrowUp className="w-3 h-3 text-tms-success" />
+                              <span className="truncate max-w-[180px]">{task.pickupAddress}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <ArrowDown className="w-3 h-3 text-tms-error" />
+                              <span className="truncate max-w-[180px]">{task.dropoffAddress}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs">
+                            {formatTime(task.pickupWindowStart)}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`text-[10px] ${PRIORITY_STYLES[task.priority]}`}>
+                            {t(`priority.${task.priority}`)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            className={`text-[10px] ${STATUS_STYLES[task.status] ?? STATUS_STYLES.pending}`}
+                          >
+                            {t(`status.${task.status}`)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                setEditing(task);
+                                setDrawerOpen(true);
+                              }}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-tms-error"
+                              onClick={() => handleDelete(task.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </>
+                )}
               </TableBody>
             </Table>
-          ) : viewMode === "card" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-              {filtered.map((t) => (
-                <Card
-                  key={t.id}
-                  className={`cursor-pointer hover:shadow-md transition-shadow ${
-                    t.priority === "urgent" ? "border-tms-error/40" : ""
-                  }`}
-                >
-                  <CardContent className="p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-sm font-medium">
-                        {t.id}
-                      </span>
-                      <Badge
-                        className={`text-[10px] ${PRIORITY_STYLES[t.priority]}`}
-                      >
-                        {t.priority}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1 text-xs">
-                      <div className="flex items-center gap-1">
-                        <ArrowUp className="w-3 h-3 text-tms-success" />
-                        {t.pickup}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <ArrowDown className="w-3 h-3 text-tms-error" />
-                        {t.dropoff}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <Badge
-                        className={`text-[10px] ${STATUS_STYLES[t.status]}`}
-                      >
-                        {t.status.replace("_", " ")}
-                      </Badge>
-                      <span className="text-muted-foreground">{t.contact}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="p-8 text-center text-muted-foreground">
-              <MapPin className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">
-                Map view — Requires geocoding integration
-              </p>
-              <p className="text-xs mt-1">
-                Tasks will be plotted on an interactive map when geocoding is
-                enabled
-              </p>
-            </div>
           )}
         </CardContent>
       </Card>
+
+      <TaskFormDrawer open={drawerOpen} onOpenChange={setDrawerOpen} task={editing} />
+
+      <Dialog
+        open={optimizeDialogOpen}
+        onOpenChange={(o) => {
+          // Don't allow closing while a job is running
+          if (!activeJobId) setOptimizeDialogOpen(o);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("dispatcher.tasks.runOptimizer")}</DialogTitle>
+          </DialogHeader>
+
+          {activeJobId && jobStatusQuery.data ? (
+            <div className="space-y-3 py-2">
+              <div className="text-sm">
+                {t("dispatcher.tasks.optimizing")} ({jobStatusQuery.data.status})
+              </div>
+              <Progress value={jobStatusQuery.data.progressPercent} className="h-2" />
+              <div className="text-xs text-muted-foreground text-center">
+                {jobStatusQuery.data.progressPercent}%
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 py-1">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">{t("dispatcher.tasks.optimizationDate")}</label>
+                <Input
+                  type="date"
+                  value={optimizeDate}
+                  onChange={(e) => setOptimizeDate(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="text-sm">
+                <strong>{pendingForDateCount}</strong> {t("dispatcher.tasks.pendingShort")}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span>
+                  <strong>{activeDrivers.length}</strong> {t("dispatcher.dashboard.activeDrivers")}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("dispatcher.tasks.optimizationDescription")}
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setOptimizeDialogOpen(false)}
+              disabled={!!activeJobId}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={handleConfirmOptimize}
+              disabled={
+                triggerOptimize.isPending ||
+                activeJobId !== null ||
+                pendingForDateCount === 0 ||
+                activeDrivers.length === 0
+              }
+            >
+              {triggerOptimize.isPending || activeJobId ? (
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4 me-2" />
+              )}
+              {activeJobId ? t("dispatcher.tasks.optimizing") : t("dispatcher.tasks.queueOptimization")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

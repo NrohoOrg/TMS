@@ -1,10 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -13,14 +9,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -29,247 +22,270 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/ui/error-state";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
+import { Loader2, Plus, Search, Trash2, Users } from "lucide-react";
 import {
-  UserPlus,
-  Search,
-  MoreHorizontal,
-  Shield,
-  Radio,
-  MapPin,
-  Edit,
-  Trash2,
-  KeyRound,
-} from "lucide-react";
-import { MOCK_USER_RECORDS, type UserRecord } from "@/lib/mock-data";
-
-const ROLE_ICON: Record<string, React.ElementType> = {
-  admin: Shield,
-  dispatcher: Radio,
-  driver: MapPin,
-};
-const ROLE_COLOR: Record<string, string> = {
-  admin: "text-primary",
-  dispatcher: "text-tms-info",
-  driver: "text-tms-success",
-};
+  useAdminUsers,
+  useCreateAdminUser,
+  useDeleteAdminUser,
+  useUpdateAdminUser,
+} from "@/features/shared/hooks";
+import type { Role } from "@/types/api";
 
 export default function AdminUsers() {
+  const { toast } = useToast();
+  const { t: tFn } = useTranslation();
   const [search, setSearch] = useState("");
-  const [filterRole, setFilterRole] = useState("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const users = MOCK_USER_RECORDS;
-
-  const filtered = users.filter((u) => {
-    const matchSearch =
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase());
-    const matchRole = filterRole === "all" || u.role === filterRole;
-    return matchSearch && matchRole;
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({
+    email: "",
+    name: "",
+    phone: "",
+    password: "",
+    role: "DISPATCHER" as "ADMIN" | "DISPATCHER",
   });
 
+  const usersQuery = useAdminUsers();
+  const createMut = useCreateAdminUser();
+  const updateMut = useUpdateAdminUser();
+  const deleteMut = useDeleteAdminUser();
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return usersQuery.data ?? [];
+    return (usersQuery.data ?? []).filter(
+      (u) =>
+        u.email.toLowerCase().includes(q) ||
+        (u.name ?? "").toLowerCase().includes(q),
+    );
+  }, [usersQuery.data, search]);
+
+  async function handleCreate() {
+    if (!form.email || !form.password) {
+      toast({
+        title: tFn("common.missingFields"),
+        description: tFn("admin.users.emailRequired"),
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await createMut.mutateAsync({
+        email: form.email,
+        password: form.password,
+        name: form.name || undefined,
+        phone: form.phone || undefined,
+        role: form.role,
+      });
+      toast({ title: tFn("admin.users.userCreated") });
+      setCreateOpen(false);
+      setForm({ email: "", name: "", phone: "", password: "", role: "DISPATCHER" });
+    } catch (err) {
+      toast({
+        title: tFn("common.createFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleRoleChange(id: string, role: Role) {
+    if (role === "DRIVER") return;
+    try {
+      await updateMut.mutateAsync({ id, data: { role } });
+      toast({ title: tFn("admin.users.roleUpdated") });
+    } catch (err) {
+      toast({
+        title: tFn("common.updateFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm(tFn("admin.users.confirmDelete"))) return;
+    try {
+      await deleteMut.mutateAsync(id);
+      toast({ title: tFn("admin.users.userDeleted") });
+    } catch (err) {
+      toast({
+        title: tFn("common.deleteFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">
-            User Management
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {users.length} total users •{" "}
-            {users.filter((u) => u.status === "active").length} active
-          </p>
-        </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <UserPlus className="w-4 h-4 mr-2" /> Add User
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="font-display">
-                Create New User
-              </DialogTitle>
-            </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setDialogOpen(false);
-              }}
-              className="space-y-4 mt-2"
-            >
-              <div className="space-y-2">
-                <Label>Full Name</Label>
-                <Input name="name" required placeholder="Full name" />
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <PageHeader
+        title={tFn("admin.users.title")}
+        subtitle={tFn("admin.users.subtitle")}
+        actions={
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="w-4 h-4 me-1" /> {tFn("admin.users.newUser")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{tFn("admin.users.createUser")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>{tFn("admin.users.emailRequiredLabel")}</Label>
+                  <Input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>{tFn("common.name")}</Label>
+                    <Input
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{tFn("common.phone")}</Label>
+                    <Input
+                      value={form.phone}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>{tFn("admin.users.passwordRequired")}</Label>
+                  <Input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>{tFn("admin.users.selectRole")}</Label>
+                  <Select
+                    value={form.role}
+                    onValueChange={(v) => setForm({ ...form, role: v as "ADMIN" | "DISPATCHER" })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ADMIN">{tFn("roles.admin")}</SelectItem>
+                      <SelectItem value="DISPATCHER">{tFn("roles.dispatcher")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="user@company.dz"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Phone</Label>
-                <Input name="phone" placeholder="+213 555 0000" />
-              </div>
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <Select name="role" defaultValue="driver">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">Administrator</SelectItem>
-                    <SelectItem value="dispatcher">Dispatcher</SelectItem>
-                    <SelectItem value="driver">Driver</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDialogOpen(false)}
-                >
-                  Cancel
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                  {tFn("common.cancel")}
                 </Button>
-                <Button type="submit">Create User</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                <Button onClick={handleCreate} disabled={createMut.isPending}>
+                  {createMut.isPending && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                  {tFn("common.create")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search users..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-            <Select value={filterRole} onValueChange={setFilterRole}>
-              <SelectTrigger className="w-40 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="admin">Admins</SelectItem>
-                <SelectItem value="dispatcher">Dispatchers</SelectItem>
-                <SelectItem value="driver">Drivers</SelectItem>
-              </SelectContent>
-            </Select>
+        <CardHeader className="pb-2">
+          <div className="relative max-w-sm">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder={tFn("admin.users.searchPlaceholder")}
+              className="ps-9 h-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((user) => {
-                const RoleIcon = ROLE_ICON[user.role] ?? MapPin;
-                return (
-                  <TableRow key={user.id}>
+          {usersQuery.isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : usersQuery.isError ? (
+            <ErrorState
+              message={usersQuery.error instanceof Error ? usersQuery.error.message : tFn("common.unknownError")}
+              onRetry={() => usersQuery.refetch()}
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState icon={Users} title={tFn("admin.users.noUsers")} description={tFn("admin.users.createFirst")} />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{tFn("admin.users.tableEmail")}</TableHead>
+                  <TableHead>{tFn("admin.users.tableName")}</TableHead>
+                  <TableHead>{tFn("admin.users.tableRole")}</TableHead>
+                  <TableHead>{tFn("common.lastUpdated")}</TableHead>
+                  <TableHead className="w-16">{tFn("admin.users.tableActions")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="text-sm">{u.email}</TableCell>
+                    <TableCell className="text-sm">{u.name ?? "—"}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-foreground">
-                          {user.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm">
-                            {user.name}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {user.email}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <RoleIcon
-                          className={`w-3.5 h-3.5 ${ROLE_COLOR[user.role]}`}
-                        />
-                        <span className="text-sm capitalize">{user.role}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {user.phone}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          user.status === "active" ? "secondary" : "outline"
-                        }
-                        className="text-xs"
+                      <Select
+                        value={u.role}
+                        onValueChange={(v) => handleRoleChange(u.id, v as Role)}
                       >
-                        {user.status}
-                      </Badge>
+                        <SelectTrigger className="h-7 w-32 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ADMIN">{tFn("roles.admin")}</SelectItem>
+                          <SelectItem value="DISPATCHER">{tFn("roles.dispatcher")}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {user.lastLogin}
+                    <TableCell className="text-xs text-muted-foreground">
+                      {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : "—"}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Edit className="w-3.5 h-3.5 mr-2" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <KeyRound className="w-3.5 h-3.5 mr-2" /> Reset
-                            Password
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            {user.status === "active"
-                              ? "Deactivate"
-                              : "Activate"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-tms-error"
+                        onClick={() => handleDelete(u.id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
+
+      {(updateMut.isPending || deleteMut.isPending) && (
+        <Badge variant="outline" className="text-xs">
+          <Loader2 className="w-3 h-3 me-1 animate-spin" /> {tFn("common.loading")}
+        </Badge>
+      )}
     </div>
   );
 }

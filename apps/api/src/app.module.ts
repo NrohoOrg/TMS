@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import { AdminModule } from './admin/admin.module';
 import { HealthController } from './health.controller';
 import { AvailabilityModule } from './availability/availability.module';
@@ -11,10 +12,12 @@ import { AuthModule } from './auth/auth.module';
 import { DriverAppModule } from './driver-app/driver-app.module';
 import { DriversModule } from './drivers/drivers.module';
 import { GeocodeModule } from './geocode/geocode.module';
+import { IncidentsModule } from './incidents/incidents.module';
 import { PlanningModule } from './planning/planning.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { RoutingModule } from './routing/routing.module';
+import { SmsModule } from './sms/sms.module';
 import { TasksModule } from './tasks/tasks.module';
 
 const getClientIp = (request: Record<string, unknown>): string => {
@@ -69,7 +72,13 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Load env vars from the repo-root .env regardless of process cwd.
+      // Without this, ConfigModule looks for apps/api/.env which doesn't
+      // exist (the repo's single source of truth lives at the workspace root).
+      envFilePath: resolve(process.cwd(), '../../.env'),
+    }),
     ThrottlerModule.forRoot({
       throttlers: [
         {
@@ -119,9 +128,11 @@ const rateLimitTracker = (request: Record<string, unknown>): string => {
     TasksModule,
     AvailabilityModule,
     PlanningModule,
+    IncidentsModule,
     PrismaModule,
     RedisModule,
     RoutingModule,
+    SmsModule,
   ],
   controllers: [HealthController],
   providers: [

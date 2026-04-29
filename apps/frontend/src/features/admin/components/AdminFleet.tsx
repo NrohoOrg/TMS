@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Search, Truck, Car, Bus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { MOCK_VEHICLES } from "@/lib/mock-data";
 
 const TYPE_ICON: Record<string, React.ElementType> = {
@@ -42,6 +43,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "destructive" | "outline"> =
   { active: "secondary", maintenance: "destructive", retired: "outline" };
 
 export default function AdminFleet() {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -53,27 +55,26 @@ export default function AdminFleet() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold text-foreground">
-            Fleet Management
+            {t("admin.fleet.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {MOCK_VEHICLES.filter((v) => v.status === "active").length} active
-            vehicles
+            {t("admin.fleet.subtitle")}
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="w-4 h-4 mr-2" /> Add Vehicle
+              <Plus className="w-4 h-4 me-2" /> {t("admin.fleet.addVehicle")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="font-display">
-                Register Vehicle
+                {t("admin.fleet.addVehicle")}
               </DialogTitle>
             </DialogHeader>
             <form
@@ -89,16 +90,16 @@ export default function AdminFleet() {
                   <Input name="plate" required placeholder="16-A-0000" />
                 </div>
                 <div className="space-y-1">
-                  <Label>Type</Label>
+                  <Label>{t("common.type")}</Label>
                   <Select name="type" defaultValue="Van">
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {["Car", "Van", "Truck", "Bus", "Motorcycle"].map(
-                        (t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
+                        (ty) => (
+                          <SelectItem key={ty} value={ty}>
+                            {ty}
                           </SelectItem>
                         ),
                       )}
@@ -118,7 +119,7 @@ export default function AdminFleet() {
                   <Input name="year" type="number" defaultValue={2024} />
                 </div>
                 <div className="space-y-1">
-                  <Label>Depot</Label>
+                  <Label>{t("admin.drivers.tableDepot")}</Label>
                   <Input
                     name="depot"
                     required
@@ -140,9 +141,9 @@ export default function AdminFleet() {
                   variant="outline"
                   onClick={() => setDialogOpen(false)}
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
-                <Button type="submit">Save Vehicle</Button>
+                <Button type="submit">{t("common.save")}</Button>
               </div>
             </form>
           </DialogContent>
@@ -152,12 +153,12 @@ export default function AdminFleet() {
       <Card>
         <CardHeader className="pb-3">
           <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search vehicles..."
+              placeholder={t("common.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
+              className="ps-9 h-9"
             />
           </div>
         </CardHeader>
@@ -166,11 +167,11 @@ export default function AdminFleet() {
             <TableHeader>
               <TableRow>
                 <TableHead>Vehicle</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Capacity</TableHead>
-                <TableHead>Depot</TableHead>
+                <TableHead>{t("common.type")}</TableHead>
+                <TableHead>{t("admin.drivers.tableCapacity")}</TableHead>
+                <TableHead>{t("admin.drivers.tableDepot")}</TableHead>
                 <TableHead>Assigned Driver</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("common.status")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

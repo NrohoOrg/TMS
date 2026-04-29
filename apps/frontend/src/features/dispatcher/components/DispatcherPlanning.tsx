@@ -1,407 +1,369 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Route,
-  Play,
-  Settings,
   CheckCircle2,
-  Clock,
-  Users,
   ClipboardList,
-  AlertTriangle,
   Loader2,
+  RefreshCcw,
+  Route as RouteIcon,
+  Send,
+  Users,
 } from "lucide-react";
-import { MOCK_PLAN_ROUTES, MOCK_PLAN_UNASSIGNED } from "@/lib/mock-data";
+import {
+  useDrivers,
+  usePlan,
+  usePlansFiltered,
+  usePublishPlan,
+} from "@/features/shared/hooks";
+import {
+  useRecalculatePlan,
+  useUnassignedTasks,
+} from "@/features/shared/hooks/useManualPlanning";
+import { useToast } from "@/hooks/use-toast";
+import { MapView, MapLegend, getDriverColor, type MapMarker, type MapRoute } from "@/components/map";
+import { PlanRoutesPanel } from "./PlanRoutesPanel";
+import { UnassignedPanel } from "./UnassignedPanel";
+import type { LatLng } from "@/lib/osrm";
 
-type PlanState = "config" | "running" | "review";
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+import { useTranslation } from "react-i18next";
 
 export default function DispatcherPlanning() {
-  const [state, setState] = useState<PlanState>("config");
-  const [progress, setProgress] = useState(0);
+  const { toast } = useToast();
+  const { t: tFn } = useTranslation();
+  const router = useRouter();
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
-  const runOptimization = () => {
-    setState("running");
-    setProgress(0);
-    const steps = [10, 25, 50, 75, 90, 100];
-    steps.forEach((val, i) => {
-      setTimeout(() => {
-        setProgress(val);
-        if (val === 100) setTimeout(() => setState("review"), 500);
-      }, (i + 1) * 800);
+  const plansQuery = usePlansFiltered({ date: selectedDate });
+  const driversQuery = useDrivers();
+  const planQuery = usePlan(selectedPlanId);
+  const unassignedQuery = useUnassignedTasks(selectedPlanId, selectedDate);
+
+  const recalculate = useRecalculatePlan(selectedPlanId ?? "");
+  const publish = usePublishPlan();
+
+  const drivers = driversQuery.data ?? [];
+  const plan = planQuery.data;
+  const isDraft = plan?.status === "draft";
+
+  // Auto-select most recent plan when plans load
+  useEffect(() => {
+    if (!selectedPlanId && plansQuery.data && plansQuery.data.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedPlanId(plansQuery.data[0].planId);
+    }
+  }, [plansQuery.data, selectedPlanId]);
+
+  async function handleRecalculate() {
+    if (!selectedPlanId) return;
+    try {
+      await recalculate.mutateAsync();
+      toast({ title: tFn("dispatcher.planning.recalculated") });
+    } catch (err) {
+      toast({
+        title: tFn("dispatcher.planning.recalculateFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handlePublish() {
+    if (!selectedPlanId) return;
+    if (!confirm("Publish this plan? Drivers will be notified and the plan becomes read-only.")) return;
+    try {
+      await publish.mutateAsync(selectedPlanId);
+      toast({ title: tFn("dispatcher.planning.planPublished") });
+      plansQuery.refetch();
+      router.push("/dispatcher/operations");
+    } catch (err) {
+      toast({
+        title: tFn("dispatcher.planning.publishFailed"),
+        description: err instanceof Error ? err.message : tFn("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  // Map data
+  const mapMarkers: MapMarker[] = useMemo(() => {
+    const markers: MapMarker[] = [];
+    if (!plan) return markers;
+    // Dedupe depot pins (drivers share a single shared depot).
+    const depotsSeen = new Set<string>();
+
+    plan.routes.forEach((route, rIdx) => {
+      const driver = drivers.find((d) => d.id === route.driverId);
+      if (driver) {
+        const key = `${driver.depotLat.toFixed(5)},${driver.depotLng.toFixed(5)}`;
+        if (!depotsSeen.has(key)) {
+          depotsSeen.add(key);
+          markers.push({
+            id: `depot-${key}`,
+            position: [driver.depotLat, driver.depotLng],
+            kind: "depot",
+            label: "🏠",
+            popup: "Ministère des Startups",
+          });
+        }
+      }
+      route.stops.forEach((stop, sIdx) => {
+        const lat =
+          stop.type === "pickup" ? stop.task.pickupLat : stop.task.dropoffLat;
+        const lng =
+          stop.type === "pickup" ? stop.task.pickupLng : stop.task.dropoffLng;
+        if (lat == null || lng == null) return;
+        markers.push({
+          id: stop.stopId,
+          position: [lat, lng],
+          kind: stop.type,
+          label: sIdx + 1,
+          color: getDriverColor(rIdx),
+          status: stop.status,
+          popup: (
+            <div className="text-xs">
+              <div className="font-display font-semibold">{stop.task.title}</div>
+              <div className="text-muted-foreground">
+                {stop.type === "pickup" ? stop.task.pickupAddress : stop.task.dropoffAddress}
+              </div>
+              <div className="text-muted-foreground mt-1">
+                Driver: {route.driverName} • Stop #{sIdx + 1}
+              </div>
+            </div>
+          ),
+        });
+      });
     });
-  };
 
-  /* ── Config view ── */
-  if (state === "config") {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground">
-              Planning Configuration
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Configure optimization parameters before running
-            </p>
+    // Highlight the selected unassigned task with a marker pair
+    if (highlightedTaskId) {
+      const t = unassignedQuery.data?.find((x) => x.id === highlightedTaskId);
+      if (t) {
+        markers.push({
+          id: `${t.id}-pickup-hl`,
+          position: [t.pickupLat, t.pickupLng],
+          kind: "pickup",
+          label: "P",
+          color: "#dc2626",
+          popup: `Unassigned: ${t.title}`,
+        });
+        markers.push({
+          id: `${t.id}-dropoff-hl`,
+          position: [t.dropoffLat, t.dropoffLng],
+          kind: "dropoff",
+          label: "D",
+          color: "#dc2626",
+          popup: `Unassigned: ${t.title}`,
+        });
+      }
+    }
+    return markers;
+  }, [plan, drivers, highlightedTaskId, unassignedQuery.data]);
+
+  const mapRoutes: MapRoute[] = useMemo(() => {
+    if (!plan) return [];
+    return plan.routes.map((route, rIdx) => {
+      const driver = drivers.find((d) => d.id === route.driverId);
+      const stops: LatLng[] = [];
+      if (driver) stops.push([driver.depotLat, driver.depotLng]);
+      route.stops.forEach((s) => {
+        const lat = s.type === "pickup" ? s.task.pickupLat : s.task.dropoffLat;
+        const lng = s.type === "pickup" ? s.task.pickupLng : s.task.dropoffLng;
+        if (lat != null && lng != null) stops.push([lat, lng]);
+      });
+      return {
+        id: `route-${route.driverId}`,
+        driverIndex: rIdx,
+        stops,
+      };
+    });
+  }, [plan, drivers]);
+
+  const stats = useMemo(() => {
+    if (!plan) return null;
+    const totalStops = plan.routes.reduce((s, r) => s + r.stops.length, 0);
+    return {
+      assignedTasks: totalStops / 2,
+      unassignedCount: plan.unassigned.length,
+      driversUsed: plan.routes.length,
+    };
+  }, [plan]);
+
+  return (
+    <div className="flex flex-col lg:h-[calc(100vh-3.5rem)]">
+      <div className="border-b border-border bg-background px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <PageHeader title={tFn("dispatcher.planning.title")} subtitle={tFn("dispatcher.planning.subtitle")} />
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">{tFn("common.date")}</Label>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setSelectedPlanId(null);
+              }}
+              className="h-8 w-40 text-xs"
+            />
           </div>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-display">
-                Planning Horizon
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Planning Date</Label>
-                <Input type="date" defaultValue="2026-03-01" />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>
-                  Include uncompleted tasks from previous days
-                </Label>
-                <Switch defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-display">
-                Driver Selection
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Select defaultValue="all">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">
-                    All Available Drivers (12)
-                  </SelectItem>
-                  <SelectItem value="custom">Custom Selection</SelectItem>
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-display">
-                Depot &amp; Constraints
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Start Policy</Label>
-                <Select defaultValue="depot">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="depot">Start at Depot</SelectItem>
-                    <SelectItem value="flexible">Flexible Start</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>Return to Depot</Label>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>Enable Capacity Constraints</Label>
-                <Switch defaultChecked />
-              </div>
-              <div className="space-y-2">
-                <Label>Max Stops per Driver</Label>
-                <Input type="number" defaultValue={15} />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-display">
-                Optimization Objective
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Select defaultValue="standard">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">
-                    Standard: Max tasks, min time
-                  </SelectItem>
-                  <SelectItem value="balance">Balance Workload</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="flex items-center justify-between">
-                <Label>Respect Time Windows</Label>
-                <Switch defaultChecked />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Pre-run summary */}
-        <Card className="border-primary/20 bg-tms-success-light/30">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-8">
-                <div className="text-center">
-                  <div className="text-xl font-display font-bold text-foreground">
-                    47
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Tasks to Assign
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xl font-display font-bold text-foreground">
-                    12
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Drivers Available
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xl font-display font-bold text-foreground">
-                    ~45s
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Est. Computation
-                  </div>
-                </div>
-              </div>
-              <Button
-                onClick={runOptimization}
-                size="lg"
-                className="font-semibold"
-              >
-                <Play className="w-4 h-4 mr-2" /> Generate Plan
-              </Button>
+        {plan && stats && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 text-xs">
+              <Stat icon={ClipboardList} label={tFn("dispatcher.planning.assigned")} value={String(stats.assignedTasks)} />
+              <Stat
+                icon={ClipboardList}
+                label={tFn("dispatcher.planning.unassigned")}
+                value={String(stats.unassignedCount)}
+                tone={stats.unassignedCount > 0 ? "warn" : undefined}
+              />
+              <Stat icon={Users} label={tFn("dispatcher.planning.drivers")} value={String(stats.driversUsed)} />
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  /* ── Running view ── */
-  if (state === "running") {
-    return (
-      <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-8 text-center space-y-6">
-            <Loader2 className="w-12 h-12 text-primary mx-auto animate-spin" />
-            <div>
-              <h2 className="text-xl font-display font-bold text-foreground">
-                Generating Plan
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Optimizing routes for 47 tasks across 12 drivers
-              </p>
-            </div>
-            <Progress value={progress} className="h-2" />
-            <div className="space-y-2 text-left text-sm">
-              {[
-                { label: "Preparing Data", threshold: 10 },
-                { label: "Building Distance Matrix", threshold: 25 },
-                { label: "Running Optimization", threshold: 50 },
-                { label: "Building Routes", threshold: 90 },
-              ].map((step) => (
-                <div key={step.label} className="flex items-center gap-2">
-                  {progress >= step.threshold ? (
-                    <CheckCircle2 className="w-4 h-4 text-tms-success" />
-                  ) : progress > step.threshold - 15 ? (
-                    <Loader2 className="w-4 h-4 text-primary animate-spin" />
+            {isDraft ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRecalculate}
+                  disabled={recalculate.isPending}
+                  className="text-xs"
+                >
+                  {recalculate.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
                   ) : (
-                    <div className="w-4 h-4 rounded-full border border-border" />
+                    <RefreshCcw className="w-3.5 h-3.5 me-1" />
                   )}
-                  <span
-                    className={
-                      progress >= step.threshold
-                        ? "text-foreground"
-                        : "text-muted-foreground"
-                    }
-                  >
-                    {step.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setState("config")}
-            >
-              Cancel
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  /* ── Review view ── */
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-foreground">
-            Plan Review
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Plan generated — review and publish when ready
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setState("config")}
-          >
-            <Settings className="w-4 h-4 mr-2" /> Re-configure
-          </Button>
-          <Button
-            size="sm"
-            className="bg-tms-success hover:bg-tms-success-dark text-primary-foreground"
-          >
-            <CheckCircle2 className="w-4 h-4 mr-2" /> Publish Plan
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {[
-          { label: "Assigned", value: "44", icon: ClipboardList },
-          { label: "Unassigned", value: "3", icon: AlertTriangle },
-          { label: "Assignment Rate", value: "94%", icon: CheckCircle2 },
-          { label: "Total Travel", value: "12h 5m", icon: Clock },
-          { label: "Total Distance", value: "246km", icon: Route },
-          { label: "Drivers Used", value: "4", icon: Users },
-        ].map((s) => (
-          <Card key={s.label}>
-            <CardContent className="p-3 text-center">
-              <s.icon className="w-4 h-4 text-primary mx-auto mb-1" />
-              <div className="text-lg font-display font-bold">{s.value}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {s.label}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Routes */}
-      <div className="space-y-4">
-        <h2 className="text-base font-display font-semibold">Driver Routes</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {MOCK_PLAN_ROUTES.map((r) => (
-            <Card
-              key={r.driver}
-              className="hover:shadow-md transition-shadow"
-            >
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-sm">{r.driver}</div>
-                    <div className="text-xs text-muted-foreground font-mono">
-                      {r.vehicle}
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">
-                    {r.stops} stops
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Duration:</span>{" "}
-                    <span className="font-medium">{r.duration}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Distance:</span>{" "}
-                    <span className="font-medium">{r.distance}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Utilization:</span>{" "}
-                    <span className="font-medium">{r.utilization}%</span>
-                  </div>
-                </div>
-                <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      r.utilization >= 80
-                        ? "bg-tms-success"
-                        : r.utilization >= 60
-                          ? "bg-tms-warning"
-                          : "bg-tms-info"
-                    }`}
-                    style={{ width: `${r.utilization}%` }}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {r.tasks.map((t) => (
-                    <Badge
-                      key={t}
-                      variant="outline"
-                      className="text-[10px] font-mono"
-                    >
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Unassigned */}
-      {MOCK_PLAN_UNASSIGNED.length > 0 && (
-        <Card className="border-tms-warning/30">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-display flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-tms-warning" /> Unassigned
-              Tasks ({MOCK_PLAN_UNASSIGNED.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {MOCK_PLAN_UNASSIGNED.map((u) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between py-2 border-b border-border last:border-0"
-              >
-                <div>
-                  <span className="font-mono text-sm font-medium">{u.id}</span>
-                  <p className="text-xs text-muted-foreground">{u.reason}</p>
-                </div>
-                <Button variant="outline" size="sm" className="text-xs">
-                  Assign Manually
+                  {tFn("dispatcher.planning.recalculate")}
                 </Button>
+                <Button
+                  size="sm"
+                  onClick={handlePublish}
+                  disabled={publish.isPending || stats.assignedTasks === 0}
+                  className="text-xs bg-tms-success hover:bg-tms-success-dark"
+                >
+                  {publish.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 me-1" />
+                  )}
+                  {tFn("dispatcher.planning.publish")}
+                </Button>
+              </>
+            ) : (
+              <Badge className="text-[10px] bg-tms-success-light text-tms-success-dark">
+                <CheckCircle2 className="w-3 h-3 me-1" /> {tFn("dispatcher.planning.published")}
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 min-h-0 gap-0">
+        {/* Center: map (now wider since left rail removed) */}
+        <div className="lg:col-span-8 relative min-h-[400px]">
+          {planQuery.isLoading ? (
+            <Skeleton className="h-full w-full" />
+          ) : planQuery.isError ? (
+            <div className="p-4">
+              <ErrorState
+                message={planQuery.error instanceof Error ? planQuery.error.message : tFn("common.unknownError")}
+                onRetry={() => planQuery.refetch()}
+              />
+            </div>
+          ) : !plan ? (
+            <div className="p-4 h-full flex items-center justify-center">
+              <EmptyState
+                icon={RouteIcon}
+                title={tFn("dispatcher.planning.noPlanSelected")}
+                description={tFn("dispatcher.planning.selectPlanHint")}
+              />
+            </div>
+          ) : (
+            <>
+              <MapView
+                markers={mapMarkers}
+                routes={mapRoutes}
+                height="100%"
+                fitBoundsKey={`${plan.planId}-${plan.routes.length}`}
+              />
+              <div className="absolute bottom-3 start-3 z-[400]">
+                <MapLegend
+                  items={[
+                    { color: "#1f2937", label: "Ministère" },
+                    { color: "#2265c3", label: "Pickup" },
+                    { color: "#0d9488", label: "Dropoff" },
+                    { color: "#dc2626", label: "Unassigned" },
+                  ]}
+                />
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            </>
+          )}
+        </div>
+
+        {/* Right rail */}
+        <div className="lg:col-span-4 lg:border-l border-t lg:border-t-0 border-border bg-muted/20 lg:grid lg:grid-rows-[1fr_auto] lg:min-h-0 lg:overflow-hidden">
+          {plan ? (
+            <PlanRoutesPanel
+              plan={plan}
+              drivers={drivers}
+              unassignedTasks={unassignedQuery.data ?? []}
+            />
+          ) : (
+            <div className="p-4 text-xs text-muted-foreground text-center">
+              {tFn("dispatcher.planning.selectPlanHint")}
+            </div>
+          )}
+          <div className="border-t border-border max-h-72 overflow-hidden">
+            <UnassignedPanel
+              tasksInPlan={plan?.unassigned ?? []}
+              pendingTasks={unassignedQuery.data ?? []}
+              selectedTaskId={highlightedTaskId}
+              onSelect={setHighlightedTaskId}
+            />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+function Stat({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  tone?: "warn";
+}) {
+  return (
+    <div
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background ${
+        tone === "warn" ? "border-tms-warning/40 bg-tms-warning-light/30" : ""
+      }`}
+    >
+      <Icon className="w-3 h-3 text-muted-foreground" />
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-mono font-semibold">{value}</span>
     </div>
   );
 }

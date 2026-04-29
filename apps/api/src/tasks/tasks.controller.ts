@@ -24,9 +24,11 @@ import {
 } from '@nestjs/swagger';
 import { Role, Task } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { ImportTasksResponseDto } from './dto/import-error.dto';
 import { ListTasksDto } from './dto/list-tasks.dto';
@@ -73,8 +75,31 @@ export class TasksController {
   @Post()
   @ApiOperation({ summary: 'Create a task' })
   @ApiResponse({ status: 201, description: 'Task created' })
-  create(@Body() dto: CreateTaskDto): Promise<Task> {
-    return this.tasksService.create(dto);
+  create(
+    @Body() dto: CreateTaskDto,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<Task> {
+    return this.tasksService.create(dto, currentUser);
+  }
+
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve a Cadre-submitted task' })
+  approve(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<Task> {
+    return this.tasksService.approve(id, currentUser);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a Cadre-submitted task' })
+  reject(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<Task> {
+    return this.tasksService.reject(id, currentUser);
   }
 
   @Patch(':id')
@@ -86,11 +111,14 @@ export class TasksController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Cancel a task' })
+  @ApiOperation({ summary: 'Cancel a task (assigned-not-started allowed in v1.1)' })
   @ApiResponse({ status: 204, description: 'Task cancelled' })
-  @ApiResponse({ status: 409, description: 'Cannot cancel an assigned task' })
-  async remove(@Param('id') id: string): Promise<void> {
-    await this.tasksService.remove(id);
+  @ApiResponse({ status: 409, description: 'Cannot cancel an in-progress or completed task' })
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<void> {
+    await this.tasksService.remove(id, currentUser);
   }
 
   @Post('import')

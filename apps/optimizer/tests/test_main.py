@@ -17,8 +17,9 @@ def _base_payload() -> dict:
         "jobId": "job-1",
         "config": {
             "maxSolveSeconds": 5,
-            "speedKmh": 40,
+            "speedKmh": 50,
             "returnToDepot": False,
+            "dropoffWithinSeconds": 7200,
         },
         "drivers": [
             {
@@ -41,8 +42,6 @@ def _base_payload() -> dict:
                 "pickupServiceS": 300,
                 "dropoffLat": 36.742,
                 "dropoffLng": 3.095,
-                "dropoffDeadlineS": 50000,
-                "dropoffServiceS": 300,
                 "capacityUnits": 1,
             }
         ],
@@ -71,7 +70,6 @@ def test_infeasible_window_returns_time_window_reason() -> None:
     payload["drivers"][0]["shiftEndS"] = 100
     payload["tasks"][0]["pickupWindowStartS"] = 200
     payload["tasks"][0]["pickupWindowEndS"] = 250
-    payload["tasks"][0]["dropoffDeadlineS"] = 300
 
     response = client.post("/optimize", json=payload)
     assert response.status_code == 200

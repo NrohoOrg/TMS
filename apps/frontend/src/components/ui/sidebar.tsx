@@ -114,7 +114,7 @@ export const MobileSidebar = ({
     <>
       <div
         className={cn(
-          "h-16 px-4 flex flex-row lg:hidden items-center justify-between bg-card border-b border-border w-full"
+          "h-16 px-4 flex flex-row lg:hidden items-center justify-between bg-card border-b border-border w-full sticky top-0 z-[1000]"
         )}
         {...props}
       >
@@ -135,7 +135,7 @@ export const MobileSidebar = ({
                 ease: "easeInOut",
               }}
               className={cn(
-                "fixed h-full w-full inset-0 bg-background p-6 z-[100] flex flex-col justify-between",
+                "fixed h-full w-full inset-0 bg-background p-6 z-[2000] flex flex-col justify-between",
                 className
               )}
             >
@@ -163,10 +163,15 @@ export const SidebarLink = ({
   className?: string;
   props?: LinkProps;
 }) => {
-  const { open, animate } = useSidebar();
+  const { open, animate, setOpen } = useSidebar();
   return (
     <Link
       href={link.href}
+      onClick={() => {
+        if (typeof window !== "undefined" && window.innerWidth < 1024) {
+          setOpen(false);
+        }
+      }}
       className={cn(
         "flex items-center justify-start gap-2 group/sidebar py-2",
         className

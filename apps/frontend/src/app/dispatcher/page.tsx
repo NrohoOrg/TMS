@@ -1,5 +1,5 @@
-import DispatcherDashboard from "@/features/dispatcher/components/DispatcherDashboard";
+import { redirect } from "next/navigation";
 
-export default function DispatcherDashboardRoute() {
-  return <DispatcherDashboard />;
+export default function DispatcherRoot() {
+  redirect("/dispatcher/tasks");
 }

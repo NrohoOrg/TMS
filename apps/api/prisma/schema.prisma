@@ -19,11 +19,20 @@ model User {
   refreshTokens RefreshToken[]
   plans         Plan[]
   optimizationJobs OptimizationJob[]
+  tasksCreated  Task[]   @relation("TaskCreatedBy")
+  tasksDecided  Task[]   @relation("TaskDecidedBy")
 }
 
 enum Role {
   ADMIN
   DISPATCHER
+  CADRE
+}
+
+enum TaskApprovalStatus {
+  pending_approval
+  approved
+  rejected
 }
 
 model RefreshToken {
@@ -64,9 +73,7 @@ model Availability {
 }
 
 enum Priority {
-  low
   normal
-  high
   urgent
 }
 
@@ -88,13 +95,17 @@ model Task {
   dropoffAddress        String
   dropoffLat            Float
   dropoffLng            Float
-  dropoffDeadline       DateTime
-  dropoffServiceMinutes Int        @default(0)
   priority              Priority   @default(normal)
   status                TaskStatus @default(pending)
   notes                 String?
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
+  approvalStatus        TaskApprovalStatus @default(approved)
+  createdById           String?
+  createdBy             User?      @relation("TaskCreatedBy", fields: [createdById], references: [id])
+  decidedAt             DateTime?
+  decidedById           String?
+  decidedBy             User?      @relation("TaskDecidedBy", fields: [decidedById], references: [id])
   stops                 Stop[]
 }
 
@@ -104,15 +115,18 @@ enum PlanStatus {
 }
 
 model Plan {
-  id          String     @id @default(uuid())
-  date        DateTime   @db.Date
-  status      PlanStatus @default(draft)
-  publishedAt DateTime?
-  createdAt   DateTime   @default(now())
-  createdById String
-  createdBy   User       @relation(fields: [createdById], references: [id])
-  routes      Route[]
-  jobs        OptimizationJob[]
+  id              String     @id @default(uuid())
+  date            DateTime   @db.Date
+  status          PlanStatus @default(draft)
+  publishedAt     DateTime?
+  createdAt       DateTime   @default(now())
+  createdById     String
+  notes           String?
+  lastEditedAt    DateTime?
+  lastEditedById  String?
+  createdBy       User       @relation(fields: [createdById], references: [id])
+  routes          Route[]
+  jobs            OptimizationJob[]
 }
 
 model Route {
@@ -121,9 +135,11 @@ model Route {
   driverId        String
   totalDistanceM  Int     @default(0)
   totalTimeS      Int     @default(0)
-  plan            Plan    @relation(fields: [planId], references: [id])
+  plan            Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
   driver          Driver  @relation(fields: [driverId], references: [id])
   stops           Stop[]
+
+  @@unique([planId, driverId])
 }
 
 enum StopType {
@@ -139,20 +155,22 @@ enum StopStatus {
 }
 
 model Stop {
-  id             String      @id @default(uuid())
-  routeId        String
-  taskId         String
-  sequence       Int
-  type           StopType
-  etaS           Int
-  departureS     Int
-  actualArrivalS Int?
-  completedAt    DateTime?
-  notes          String?
-  status         StopStatus  @default(pending)
-  route          Route       @relation(fields: [routeId], references: [id])
-  task           Task        @relation(fields: [taskId], references: [id])
-  stopEvents     StopEvent[]
+  id                String      @id @default(uuid())
+  routeId           String
+  taskId            String
+  sequence          Int
+  type              StopType
+  etaS              Int
+  departureS        Int
+  actualArrivalS    Int?
+  completedAt       DateTime?
+  notes             String?
+  status            StopStatus  @default(pending)
+  locked            Boolean     @default(false)
+  manuallyAssigned  Boolean     @default(false)
+  route             Route       @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  task              Task        @relation(fields: [taskId], references: [id])
+  stopEvents        StopEvent[]
 }
 
 model StopEvent {
@@ -189,11 +207,34 @@ model OptimizationJob {
 }
 
 model Config {
-  id               Int      @id @default(1)
-  maxSolveSeconds  Int      @default(30)
-  speedKmh         Float    @default(40)
-  objectiveWeights Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
-  updatedAt        DateTime @updatedAt
+  id                          Int      @id @default(1)
+  maxSolveSeconds             Int      @default(30)
+  speedKmh                    Float    @default(40)
+  objectiveWeights            Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
+  pickupServiceMinutesDefault Int      @default(20)
+  dropoffWithinHours          Int      @default(2)
+  loadBalancingKmPerTask      Int      @default(15)
+  // Impact / KPI constants. Tunable without code changes.
+  co2GramsPerKm               Int      @default(171)   // EEA avg, light commercial diesel
+  fuelLPer100Km               Float    @default(8)     // typical delivery van
+  dieselPricePerLiterDZD      Int      @default(29)    // ~Algerian retail
+  // Cap on outbound SMS per calendar day (UTC). Once reached, sms.service
+  // refuses additional sends and returns success=false. Admin-tunable.
+  smsDailyLimit               Int      @default(50)
+  updatedAt                   DateTime @updatedAt
+}
+
+/// One row per outbound SMS attempt that actually hit the provider.
+/// Used to enforce the per-day quota and for audit.
+model SmsLog {
+  id               String   @id @default(uuid())
+  destination      String
+  success          Boolean
+  providerCode     String?
+  providerResponse String?
+  sentAt           DateTime @default(now())
+
+  @@index([sentAt])
 }
 
 model GeocodeCache {

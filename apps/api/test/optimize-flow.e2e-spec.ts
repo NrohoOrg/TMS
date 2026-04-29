@@ -116,13 +116,9 @@ describe('Optimize flow (e2e)', () => {
         pickupLat: 36.75,
         pickupLng: 3.05,
         pickupWindowStart: isoAtUtc(targetDate, 9, 0),
-        pickupWindowEnd: isoAtUtc(targetDate, 10, 0),
-        pickupServiceMinutes: 5,
         dropoffAddress: 'Dropoff E2E',
         dropoffLat: 36.8,
         dropoffLng: 3.1,
-        dropoffDeadline: isoAtUtc(targetDate, 12, 0),
-        dropoffServiceMinutes: 5,
         priority: 'normal',
       });
 
@@ -138,20 +134,32 @@ describe('Optimize flow (e2e)', () => {
     createdJobId = optimizeResponse.body.data.jobId;
     expect(createdJobId).toBeDefined();
 
-    const timeoutAt = Date.now() + 15_000;
+    const timeoutAt = Date.now() + 60_000;
+    let lastStatusBody: any = null;
     while (Date.now() < timeoutAt) {
       const statusResponse = await request(app.getHttpServer())
         .get(`/api/dispatcher/planning/status/${createdJobId}`)
         .set('Authorization', `Bearer ${accessToken}`);
 
       expect(statusResponse.status).toBe(200);
+      lastStatusBody = statusResponse.body.data;
 
-      if (statusResponse.body.data.status === 'completed') {
-        createdPlanId = statusResponse.body.data.planId;
+      if (lastStatusBody.status === 'completed') {
+        createdPlanId = lastStatusBody.planId;
         break;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (lastStatusBody.status === 'failed') {
+        // eslint-disable-next-line no-console
+        console.error('Optimization job failed in CI:', lastStatusBody);
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    if (!createdPlanId) {
+      // eslint-disable-next-line no-console
+      console.error('Final job state before failing assertion:', lastStatusBody);
     }
 
     expect(createdPlanId).toBeDefined();
