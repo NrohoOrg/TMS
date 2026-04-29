@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "prisma generate && jest --config ./jest.config.ts --passWithNoTests",
