@@ -102,7 +102,7 @@ export default function DispatcherPlanning() {
       await publish.mutateAsync(selectedPlanId);
       toast({ title: tFn("dispatcher.planning.planPublished") });
       plansQuery.refetch();
-      router.push("/dispatcher/operations");
+      router.push(`/dispatcher/operations?date=${selectedDate}`);
     } catch (err) {
       toast({
         title: tFn("dispatcher.planning.publishFailed"),
