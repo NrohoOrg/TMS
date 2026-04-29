@@ -179,6 +179,7 @@ export default function DispatcherTasks() {
   // Tick a synthetic elapsed timer while the optimizer job is active so the
   // staged loader (Loading → Analyzing → …) advances even when the backend
   // hasn't sent a new progress update.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!activeJobId) {
       setOptimizeElapsedMs(0);
@@ -188,6 +189,7 @@ export default function DispatcherTasks() {
     const id = setInterval(() => setOptimizeElapsedMs(Date.now() - start), 250);
     return () => clearInterval(id);
   }, [activeJobId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleConfirmOptimize() {
     try {
