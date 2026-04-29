@@ -11,7 +11,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAMESPACE: ${{ github.repository_owner }}
 
 jobs:
   build:
@@ -22,8 +21,16 @@ jobs:
       packages: write
     outputs:
       sha_short: ${{ steps.meta.outputs.sha_short }}
+      owner_lc: ${{ steps.owner.outputs.owner_lc }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute lowercase owner & repo
+        id: owner
+        run: |
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "owner_lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - name: Set short SHA
         id: meta
@@ -45,8 +52,8 @@ jobs:
           file: apps/api/Dockerfile.prod
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-api:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-api:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-api:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-api:latest
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
@@ -56,8 +63,8 @@ jobs:
           context: ./apps/optimizer
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-optimizer:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-optimizer:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-optimizer:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-optimizer:latest
           cache-from: type=gha,scope=optimizer
           cache-to: type=gha,mode=max,scope=optimizer
 
@@ -70,8 +77,8 @@ jobs:
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-web:${{ steps.meta.outputs.sha_short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/tms-web:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-web:${{ steps.meta.outputs.sha_short }}
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/tms-web:latest
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
@@ -104,7 +111,7 @@ jobs:
           SHA: ${{ needs.build.outputs.sha_short }}
         run: |
           ssh -i ~/.ssh/id_ed25519 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "GHCR_OWNER=${{ env.IMAGE_NAMESPACE }} \
+            "GHCR_OWNER=${{ needs.build.outputs.owner_lc }} \
              SHA=${SHA} \
              GITHUB_TOKEN=${{ secrets.GHCR_PULL_TOKEN }} \
              GITHUB_ACTOR=${{ github.actor }} \

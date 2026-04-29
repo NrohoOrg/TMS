@@ -40,7 +40,7 @@ docker exec -it tms_api sh -c "cd apps/api && pnpm exec prisma studio"
 docker exec tms_api sh -c "cd apps/api && pnpm exec prisma migrate deploy"
 
 # Rollback to a specific SHA
-SHA=abc1234 docker pull ghcr.io/NrohoOrg/tms-api:$SHA
+SHA=abc1234 docker pull ghcr.io/nrohoorg/tms-api:$SHA
 # ... edit /opt/tms/docker-compose.prod.yml to pin that tag, then up -d
 
 # Database backup
