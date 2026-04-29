@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,15 @@ const DRIVER_STATUS_KEY: Record<string, string> = {
 export default function DispatcherOperations() {
   const { toast } = useToast();
   const { t } = useTranslation();
-  const [date, setDate] = useState(todayStr());
+  const searchParams = useSearchParams();
+  // Honour ?date=YYYY-MM-DD on the URL (set by the publish redirect from
+  // DispatcherPlanning) so Operations opens on the day that was just
+  // published, not today. Falls back to today for direct navigation.
+  const initialDate = (() => {
+    const d = searchParams?.get("date");
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayStr();
+  })();
+  const [date, setDate] = useState(initialDate);
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
   const monitorQuery = useMonitor(date);
