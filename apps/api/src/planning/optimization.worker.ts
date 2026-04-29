@@ -1,10 +1,12 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job, Worker } from 'bullmq';
 import axios from 'axios';
 import { JobStatus, PlanStatus, Prisma, StopType, TaskStatus } from '@prisma/client';
+import type { LatLng, RoutingMatrixProvider } from '@contracts/index';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
+import { ROUTING_MATRIX_PROVIDER } from '../routing/routing.constants';
 import { OptimizationQueuePayload } from './optimization.queue';
 
 type OptimizerRequest = {
@@ -21,6 +23,13 @@ type OptimizerRequest = {
     unassignedPenaltyNormalDzd: number;
     unassignedPenaltyUrgentDzd: number;
   };
+  /** Pre-computed road-distance matrix in metres, indexed in the order
+   *  Python builds the node list: [start depots..., end depots..., then
+   *  per-task pickup, dropoff]. Worker computes this via the routing
+   *  provider so the optimizer doesn't need a routing engine. */
+  distanceMatrixM: number[][];
+  /** Pre-computed travel-duration matrix in seconds, same indexing. */
+  timeMatrixS: number[][];
   drivers: Array<{
     id: string;
     shiftStartS: number;
@@ -73,6 +82,8 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
+    @Inject(ROUTING_MATRIX_PROVIDER)
+    private readonly routingMatrix: RoutingMatrixProvider,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -286,6 +297,22 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
         config.loadBalancingKmPerTask * fuelDzdPerKm,
       );
 
+      // Build the node list in the exact order the Python solver expects:
+      // [depot_start_0..D-1, depot_end_0..D-1, then for each task:
+      // pickup, dropoff]. The routing matrix is computed against this
+      // ordering so Python can index it directly.
+      const matrixPoints: LatLng[] = [
+        ...optimizerDrivers.map((d) => ({ lat: d.depotLat, lng: d.depotLng })),
+        ...optimizerDrivers.map((d) => ({ lat: d.depotLat, lng: d.depotLng })),
+        ...tasks.flatMap((task) => [
+          { lat: task.pickupLat, lng: task.pickupLng },
+          { lat: task.dropoffLat, lng: task.dropoffLng },
+        ]),
+      ];
+
+      const { distances: distanceMatrixM, durations: timeMatrixS } =
+        await this.routingMatrix.getMatrix(matrixPoints);
+
       const optimizerPayload: OptimizerRequest = {
         jobId: optimizationJob.id,
         config: {
@@ -300,6 +327,8 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           unassignedPenaltyNormalDzd: config.unassignedPenaltyNormalDzd,
           unassignedPenaltyUrgentDzd: config.unassignedPenaltyUrgentDzd,
         },
+        distanceMatrixM,
+        timeMatrixS,
         drivers: optimizerDrivers,
         tasks: tasks.map((task) => ({
           id: task.id,

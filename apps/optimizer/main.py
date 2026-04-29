@@ -77,6 +77,14 @@ class OptimizeRequest(BaseModel):
     config: ConfigIn
     drivers: list[DriverIn]
     tasks: list[TaskIn]
+    # Optional pre-computed road-routing matrices, indexed in the exact node
+    # order this service builds internally (depot_start × D, depot_end × D,
+    # then per-task [pickup, dropoff] pairs). When provided, these replace
+    # the in-process haversine fallback. Worker on the API side is the
+    # canonical source: it caches Google Distance Matrix results in
+    # Postgres and forwards the result here.
+    distanceMatrixM: list[list[int]] | None = None
+    timeMatrixS: list[list[int]] | None = None
 
 
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> int:
@@ -175,21 +183,39 @@ def optimize(body: OptimizeRequest):
             service_s.append(body.config.dropoffServiceSeconds)
 
         total_nodes = len(node_coords)
-        speed_mps = body.config.speedKmh * 1000.0 / 3600.0
-        distance_matrix = [[0] * total_nodes for _ in range(total_nodes)]
-        time_matrix = [[0] * total_nodes for _ in range(total_nodes)]
-        for i in range(total_nodes):
-            lat1, lng1 = node_coords[i]
-            for j in range(total_nodes):
-                if i == j:
-                    continue
-                lat2, lng2 = node_coords[j]
-                distance_m = _haversine_m(lat1, lng1, lat2, lng2)
-                travel_s = int(round(distance_m / speed_mps))
-                if distance_m > 0 and travel_s == 0:
-                    travel_s = 1
-                distance_matrix[i][j] = distance_m
-                time_matrix[i][j] = travel_s
+        precomputed_distance = body.distanceMatrixM
+        precomputed_time = body.timeMatrixS
+        if precomputed_distance is not None and precomputed_time is not None:
+            if (
+                len(precomputed_distance) != total_nodes
+                or len(precomputed_time) != total_nodes
+                or any(len(row) != total_nodes for row in precomputed_distance)
+                or any(len(row) != total_nodes for row in precomputed_time)
+            ):
+                raise ValueError(
+                    f"Pre-computed matrices must be {total_nodes}×{total_nodes}"
+                )
+            distance_matrix = [list(row) for row in precomputed_distance]
+            time_matrix = [list(row) for row in precomputed_time]
+            for i in range(total_nodes):
+                distance_matrix[i][i] = 0
+                time_matrix[i][i] = 0
+        else:
+            speed_mps = body.config.speedKmh * 1000.0 / 3600.0
+            distance_matrix = [[0] * total_nodes for _ in range(total_nodes)]
+            time_matrix = [[0] * total_nodes for _ in range(total_nodes)]
+            for i in range(total_nodes):
+                lat1, lng1 = node_coords[i]
+                for j in range(total_nodes):
+                    if i == j:
+                        continue
+                    lat2, lng2 = node_coords[j]
+                    distance_m = _haversine_m(lat1, lng1, lat2, lng2)
+                    travel_s = int(round(distance_m / speed_mps))
+                    if distance_m > 0 and travel_s == 0:
+                        travel_s = 1
+                    distance_matrix[i][j] = distance_m
+                    time_matrix[i][j] = travel_s
 
         starts = list(range(num_drivers))
         ends = list(range(num_drivers, 2 * num_drivers))

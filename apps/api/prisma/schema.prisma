@@ -240,6 +240,25 @@ model Config {
   updatedAt                   DateTime @updatedAt
 }
 
+/// Persistent cache of road-routing matrix entries (distance + duration)
+/// between two coordinates. Filled on cache miss by GoogleDistanceMatrixProvider
+/// and never expires — Algiers road geometry changes rarely, and Google's
+/// own freshness is what matters most. Coordinates are stored rounded to
+/// 5 decimals (~1 m) so near-duplicate addresses share a row.
+model RouteMatrixCache {
+  id         String   @id @default(uuid())
+  fromLat    Float
+  fromLng    Float
+  toLat      Float
+  toLng      Float
+  distanceM  Int
+  durationS  Int
+  computedAt DateTime @default(now())
+
+  @@unique([fromLat, fromLng, toLat, toLng], name: "route_matrix_pair")
+  @@index([fromLat, fromLng])
+}
+
 /// One row per outbound SMS attempt that actually hit the provider.
 /// Used to enforce the per-day quota and for audit.
 model SmsLog {

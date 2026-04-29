@@ -6,10 +6,11 @@ import { PlanningController } from './planning.controller';
 import { OptimizationQueueCleanup, optimizationQueueProvider } from './optimization.queue';
 import { OptimizationWorker } from './optimization.worker';
 import { PlanningService } from './planning.service';
+import { RoutingModule } from '../routing/routing.module';
 import { SmsModule } from '../sms/sms.module';
 
 @Module({
-  imports: [SmsModule],
+  imports: [SmsModule, RoutingModule],
   controllers: [PlanningController, ManualPlanningController, DispatcherController],
   providers: [
     PlanningService,
