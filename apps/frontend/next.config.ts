@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+
   reactCompiler: true,
   devIndicators: false,
   // Local-dev escape hatch: when API_PROXY_TARGET is set, every request to

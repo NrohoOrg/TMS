@@ -1,0 +1,68 @@
+# Build context exclusions for both apps/api and apps/frontend Docker builds
+# (build context is the repo root for both)
+
+# Dependencies
+node_modules
+**/node_modules
+
+# Build output
+.next
+**/.next
+.turbo
+**/.turbo
+.nx
+**/.nx
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+
+# Git / CI
+.git
+.github
+
+# Environment files (never bake into images)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+**/!.env.example
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+**/__tests__
+**/test
+**/tests
+
+# Docs
+*.md
+**/*.md
+!packages/contracts/README.md
+
+# Python (optimizer is built from its own context, but be safe)
+**/__pycache__
+**/*.pyc
+.venv
+**/.venv
+
+# Local docker
+docker-compose.yml
+docker-compose.override.yml
