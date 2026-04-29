@@ -147,7 +147,7 @@ describe('Optimize flow (e2e)', () => {
         break;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
 
     expect(createdPlanId).toBeDefined();

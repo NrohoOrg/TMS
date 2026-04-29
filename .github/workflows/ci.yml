@@ -135,7 +135,10 @@ jobs:
           exit 1
       - run: pnpm nx run api:test:e2e
       - if: always()
+        name: Show optimizer log on failure
         run: |
+          echo "=== optimizer.log (tail) ==="
+          tail -200 apps/optimizer/optimizer.log || true
           if [ -f apps/optimizer/optimizer.pid ]; then
             kill $(cat apps/optimizer/optimizer.pid) || true
           fi
