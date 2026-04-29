@@ -77,10 +77,6 @@ export default function DispatcherIncidents() {
   const markUnavailable = useMarkDriverUnavailable();
   const [unavailDriverId, setUnavailDriverId] = useState<string>("");
   const [unavailFromTime, setUnavailFromTime] = useState<string>(nowHHMM());
-  // R5.x easy-path: "Until" can be "End of day" (default) or a specific HH:MM.
-  // Backend captures the field but does not yet enforce a return time.
-  const [unavailUntilMode, setUnavailUntilMode] = useState<"endOfDay" | "atTime">("endOfDay");
-  const [unavailToTime, setUnavailToTime] = useState<string>("17:00");
   // Last successful mid-day re-optimization result, shown to the dispatcher
   // so they can see exactly which task moved to which driver.
   const [midDayResult, setMidDayResult] = useState<MidDayResult | null>(null);
@@ -137,7 +133,6 @@ export default function DispatcherIncidents() {
         driverId: unavailPreview.driverId,
         date: unavailPreview.date,
         fromTime: unavailFromTime,
-        toTime: unavailUntilMode === "atTime" ? unavailToTime : undefined,
       });
       toast({
         title: tFn("dispatcher.incidents.driverMarkedUnavailable"),
@@ -404,46 +399,17 @@ export default function DispatcherIncidents() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{tFn("dispatcher.incidents.fromTime")}</Label>
-                    <Input
-                      type="time"
-                      value={unavailFromTime}
-                      onChange={(e) => setUnavailFromTime(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{tFn("dispatcher.incidents.until")}</Label>
-                    <Select
-                      value={unavailUntilMode}
-                      onValueChange={(v) => setUnavailUntilMode(v as "endOfDay" | "atTime")}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="endOfDay">{tFn("dispatcher.incidents.endOfDay")}</SelectItem>
-                        <SelectItem value="atTime">{tFn("dispatcher.incidents.atTime")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">{tFn("dispatcher.incidents.fromTime")}</Label>
+                  <Input
+                    type="time"
+                    value={unavailFromTime}
+                    onChange={(e) => setUnavailFromTime(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    {tFn("dispatcher.incidents.offRestOfDayHint")}
+                  </p>
                 </div>
-                {unavailUntilMode === "atTime" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">{tFn("dispatcher.incidents.until")}</Label>
-                    <Input
-                      type="time"
-                      value={unavailToTime}
-                      onChange={(e) => setUnavailToTime(e.target.value)}
-                    />
-                    <p className="text-[10px] text-muted-foreground leading-snug">
-                      Captured for your record. The driver currently stays off
-                      for the rest of the day; mid-day return is not yet
-                      enforced by the optimizer.
-                    </p>
-                  </div>
-                )}
                 <Button
                   onClick={handlePreviewUnavailable}
                   disabled={previewUnavailable.isPending || !unavailDriverId}

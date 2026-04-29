@@ -105,12 +105,19 @@ export class TasksService {
       ];
     }
 
+    // Hide rejected cadre tasks from the dispatcher's Task Management list.
+    // Cadre still sees them in their "My Tasks" view via listMine().
+    where.approvalStatus = { not: TaskApprovalStatus.rejected };
+
     const [data, total] = await Promise.all([
       this.prisma.task.findMany({
         where,
         orderBy: { pickupWindowStart: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+        },
       }),
       this.prisma.task.count({ where }),
     ]);

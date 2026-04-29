@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,10 +15,10 @@ import {
   CheckCircle2,
   ClipboardList,
   Loader2,
-  RefreshCcw,
   Route as RouteIcon,
   Send,
   Users,
+  X,
 } from "lucide-react";
 import {
   useDrivers,
@@ -27,7 +27,7 @@ import {
   usePublishPlan,
 } from "@/features/shared/hooks";
 import {
-  useRecalculatePlan,
+  useDeletePlan,
   useUnassignedTasks,
 } from "@/features/shared/hooks/useManualPlanning";
 import { useToast } from "@/hooks/use-toast";
@@ -46,7 +46,15 @@ export default function DispatcherPlanning() {
   const { toast } = useToast();
   const { t: tFn } = useTranslation();
   const router = useRouter();
-  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const searchParams = useSearchParams();
+  // Honour ?date=YYYY-MM-DD on the URL (set by the optimizer redirect from
+  // DispatcherTasks) so the Planning view opens on the date that was just
+  // optimized, not today. Falls back to today for direct navigation.
+  const initialDate = (() => {
+    const d = searchParams?.get("date");
+    return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : todayStr();
+  })();
+  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
@@ -55,7 +63,7 @@ export default function DispatcherPlanning() {
   const planQuery = usePlan(selectedPlanId);
   const unassignedQuery = useUnassignedTasks(selectedPlanId, selectedDate);
 
-  const recalculate = useRecalculatePlan(selectedPlanId ?? "");
+  const deletePlanMut = useDeletePlan();
   const publish = usePublishPlan();
 
   const drivers = driversQuery.data ?? [];
@@ -70,14 +78,17 @@ export default function DispatcherPlanning() {
     }
   }, [plansQuery.data, selectedPlanId]);
 
-  async function handleRecalculate() {
+  async function handleCancelPlan() {
     if (!selectedPlanId) return;
+    if (!confirm(tFn("dispatcher.planning.cancelConfirm"))) return;
     try {
-      await recalculate.mutateAsync();
-      toast({ title: tFn("dispatcher.planning.recalculated") });
+      await deletePlanMut.mutateAsync(selectedPlanId);
+      toast({ title: tFn("dispatcher.planning.cancelled") });
+      setSelectedPlanId(null);
+      plansQuery.refetch();
     } catch (err) {
       toast({
-        title: tFn("dispatcher.planning.recalculateFailed"),
+        title: tFn("dispatcher.planning.cancelFailed"),
         description: err instanceof Error ? err.message : tFn("common.unknownError"),
         variant: "destructive",
       });
@@ -240,16 +251,16 @@ export default function DispatcherPlanning() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={handleRecalculate}
-                  disabled={recalculate.isPending}
-                  className="text-xs"
+                  onClick={handleCancelPlan}
+                  disabled={deletePlanMut.isPending}
+                  className="text-xs text-tms-error hover:bg-tms-error-light"
                 >
-                  {recalculate.isPending ? (
+                  {deletePlanMut.isPending ? (
                     <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
                   ) : (
-                    <RefreshCcw className="w-3.5 h-3.5 me-1" />
+                    <X className="w-3.5 h-3.5 me-1" />
                   )}
-                  {tFn("dispatcher.planning.recalculate")}
+                  {tFn("dispatcher.planning.cancelPlan")}
                 </Button>
                 <Button
                   size="sm"
