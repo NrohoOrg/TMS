@@ -92,14 +92,17 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
+          eval "$(ssh-agent -s)"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" | ssh-add -
 
       - name: Copy deploy artifacts to server
         run: |
-          scp -i ~/.ssh/id_ed25519 \
+          scp -o StrictHostKeyChecking=yes \
             docker-compose.prod.yml \
             deploy/scripts/deploy.sh \
             deploy/nginx/tms.nroho.dz-https.conf \
@@ -110,7 +113,7 @@ jobs:
         env:
           SHA: ${{ needs.build.outputs.sha_short }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+          ssh -o StrictHostKeyChecking=yes ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
             "GHCR_OWNER=${{ needs.build.outputs.owner_lc }} \
              SHA=${SHA} \
              GITHUB_TOKEN=${{ secrets.GHCR_PULL_TOKEN }} \
