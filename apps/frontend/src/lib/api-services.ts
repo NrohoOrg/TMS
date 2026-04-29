@@ -78,6 +78,8 @@ export interface TaskListParams {
   limit?: number;
   status?: string;
   priority?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export const getTasks = (params?: TaskListParams) =>

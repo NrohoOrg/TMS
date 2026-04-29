@@ -117,6 +117,7 @@ export default function DispatcherTasks() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"table" | "map">("table");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -124,12 +125,19 @@ export default function DispatcherTasks() {
   const [optimizeDialogOpen, setOptimizeDialogOpen] = useState(false);
   const [optimizeDate, setOptimizeDate] = useState(todayStr());
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // Drives the staged "Loading → Analyzing → Computing → Finalizing"
+  // animation while the optimizer runs. The backend only emits coarse
+  // progress (often stuck at 10%), so this is a UX overlay — we still
+  // snap the bar forward if the real progressPercent ever exceeds it.
+  const [optimizeElapsedMs, setOptimizeElapsedMs] = useState(0);
 
   const { data, isLoading, isError, error, refetch } = useTasks({
     page,
     limit: 50,
     status: statusFilter !== "all" ? statusFilter : undefined,
     priority: priorityFilter !== "all" ? priorityFilter : undefined,
+    dateFrom: dateFilter || undefined,
+    dateTo: dateFilter || undefined,
   });
 
   const deleteTask = useDeleteTask();
@@ -156,7 +164,7 @@ export default function DispatcherTasks() {
       toast({ title: t("dispatcher.tasks.planGenerated"), description: t("dispatcher.tasks.optimizationComplete") });
       setActiveJobId(null);
       setOptimizeDialogOpen(false);
-      router.push("/dispatcher/planning");
+      router.push(`/dispatcher/planning?date=${optimizeDate}`);
     } else if (status === "failed") {
       toast({
         title: t("dispatcher.tasks.optimizationFailed"),
@@ -167,6 +175,19 @@ export default function DispatcherTasks() {
     }
   }, [jobStatusQuery.data, router, toast, t]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Tick a synthetic elapsed timer while the optimizer job is active so the
+  // staged loader (Loading → Analyzing → …) advances even when the backend
+  // hasn't sent a new progress update.
+  useEffect(() => {
+    if (!activeJobId) {
+      setOptimizeElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setOptimizeElapsedMs(Date.now() - start), 250);
+    return () => clearInterval(id);
+  }, [activeJobId]);
 
   async function handleConfirmOptimize() {
     try {
@@ -412,7 +433,17 @@ export default function DispatcherTasks() {
               <TableBody>
                 {pendingApproval.map((task) => (
                   <TableRow key={task.id}>
-                    <TableCell className="text-sm">{task.title || "—"}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{task.title || "—"}</div>
+                      {task.createdBy ? (
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {t("dispatcher.tasks.submittedBy")}{" "}
+                          <span className="font-medium text-foreground">
+                            {task.createdBy.name || task.createdBy.email}
+                          </span>
+                        </div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-0.5 text-xs">
                         <div className="flex items-center gap-1">
@@ -496,6 +527,26 @@ export default function DispatcherTasks() {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+                  className="h-9 w-40"
+                  title={t("dispatcher.tasks.filterByDate")}
+                />
+                {dateFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    onClick={() => { setDateFilter(""); setPage(1); }}
+                    title={t("common.clear")}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
               <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-32 h-9">
                   <SelectValue />
@@ -664,15 +715,53 @@ export default function DispatcherTasks() {
           </DialogHeader>
 
           {activeJobId && jobStatusQuery.data ? (
-            <div className="space-y-3 py-2">
-              <div className="text-sm">
-                {t("dispatcher.tasks.optimizing")} ({jobStatusQuery.data.status})
-              </div>
-              <Progress value={jobStatusQuery.data.progressPercent} className="h-2" />
-              <div className="text-xs text-muted-foreground text-center">
-                {jobStatusQuery.data.progressPercent}%
-              </div>
-            </div>
+            (() => {
+              const isCompleted = jobStatusQuery.data.status === "completed";
+              // Staged client-side timeline. Each stage has a soft duration
+              // and a target percent; we interpolate within the stage so the
+              // bar moves smoothly instead of stair-stepping.
+              const stages: Array<{ key: string; until: number; pct: number }> = [
+                { key: "dispatcher.tasks.optimizerStage.loading",     until:  2000, pct: 18 },
+                { key: "dispatcher.tasks.optimizerStage.analyzing",   until:  6000, pct: 42 },
+                { key: "dispatcher.tasks.optimizerStage.computing",   until: 14000, pct: 70 },
+                { key: "dispatcher.tasks.optimizerStage.optimizing",  until: 25000, pct: 88 },
+                { key: "dispatcher.tasks.optimizerStage.finalizing",  until: Infinity, pct: 95 },
+              ];
+              let stageKey = stages[stages.length - 1].key;
+              let timed = 95;
+              let prevUntil = 0;
+              let prevPct = 5;
+              for (const s of stages) {
+                if (optimizeElapsedMs < s.until) {
+                  const span = s.until - prevUntil;
+                  const into = optimizeElapsedMs - prevUntil;
+                  timed = Math.round(prevPct + (s.pct - prevPct) * Math.min(1, into / span));
+                  stageKey = s.key;
+                  break;
+                }
+                prevUntil = s.until;
+                prevPct = s.pct;
+              }
+              const backendPct = jobStatusQuery.data.progressPercent ?? 0;
+              const pct = isCompleted ? 100 : Math.max(timed, backendPct);
+              const label = isCompleted
+                ? t("dispatcher.tasks.optimizerStage.done")
+                : t(stageKey);
+              return (
+                <div className="space-y-3 py-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    )}
+                    <span>{label}</span>
+                  </div>
+                  <Progress value={pct} className="h-2" />
+                  <div className="text-xs text-muted-foreground text-center">{pct}%</div>
+                </div>
+              );
+            })()
           ) : (
             <div className="space-y-3 py-1">
               <div className="space-y-1">

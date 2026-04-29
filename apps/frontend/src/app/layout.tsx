@@ -22,7 +22,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "TMS — Dispatch Route Planning",
-  description: "Transport Management System — Dispatch & Route Planning Dashboard",
+  description: "Task Management System — Dispatch & Route Planning Dashboard",
   icons: { icon: "/Nroho_Logo.png" },
 };
 
