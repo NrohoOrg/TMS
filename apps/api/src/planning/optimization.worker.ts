@@ -14,7 +14,12 @@ type OptimizerRequest = {
     speedKmh: number;
     returnToDepot: boolean;
     dropoffWithinSeconds: number;
-    loadBalancingKmPerTask: number;
+    dropoffServiceSeconds: number;
+    loadBalancingDzdPerTask: number;
+    fuelCostMicroDzdPerMeter: number;
+    timeCostMicroDzdPerSecond: number;
+    unassignedPenaltyNormalDzd: number;
+    unassignedPenaltyUrgentDzd: number;
   };
   drivers: Array<{
     id: string;
@@ -156,7 +161,13 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
             maxSolveSeconds: true,
             speedKmh: true,
             dropoffWithinHours: true,
+            dropoffServiceMinutesDefault: true,
             loadBalancingKmPerTask: true,
+            fuelLPer100Km: true,
+            dieselPricePerLiterDZD: true,
+            timeCostDzdPerHour: true,
+            unassignedPenaltyNormalDzd: true,
+            unassignedPenaltyUrgentDzd: true,
           },
         }),
         this.prisma.driver.findMany({
@@ -247,14 +258,32 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
         throw new Error('No available drivers for date');
       }
 
+      const dropoffServiceSeconds = config.dropoffServiceMinutesDefault * 60;
       const taskServiceById = new Map(
         tasks.map((task) => [
           task.id,
           {
             pickupServiceS: task.pickupServiceMinutes * 60,
-            dropoffServiceS: 0,
+            dropoffServiceS: dropoffServiceSeconds,
           },
         ]),
+      );
+
+      // OR objective coefficients in micro-DZD. Round-trip-safe integer
+      // conversion: fuel_dzd_per_m × 1e6 = (price × L_per_100km) × 10.
+      const fuelCostMicroDzdPerMeter = Math.round(
+        config.dieselPricePerLiterDZD * config.fuelLPer100Km * 10,
+      );
+      const timeCostMicroDzdPerSecond = Math.round(
+        (config.timeCostDzdPerHour / 3600) * 1_000_000,
+      );
+      // Preserve the existing loadBalancingKmPerTask semantic ("X km of
+      // detour acceptable per task of imbalance") under the new DZD-based
+      // optimizer. 1 km of fuel = price × L_per_100km / 100 DZD.
+      const fuelDzdPerKm =
+        (config.dieselPricePerLiterDZD * config.fuelLPer100Km) / 100;
+      const loadBalancingDzdPerTask = Math.round(
+        config.loadBalancingKmPerTask * fuelDzdPerKm,
       );
 
       const optimizerPayload: OptimizerRequest = {
@@ -264,7 +293,12 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           speedKmh: config.speedKmh,
           returnToDepot: job.data.returnToDepot,
           dropoffWithinSeconds: config.dropoffWithinHours * 3600,
-          loadBalancingKmPerTask: config.loadBalancingKmPerTask,
+          dropoffServiceSeconds,
+          loadBalancingDzdPerTask,
+          fuelCostMicroDzdPerMeter,
+          timeCostMicroDzdPerSecond,
+          unassignedPenaltyNormalDzd: config.unassignedPenaltyNormalDzd,
+          unassignedPenaltyUrgentDzd: config.unassignedPenaltyUrgentDzd,
         },
         drivers: optimizerDrivers,
         tasks: tasks.map((task) => ({

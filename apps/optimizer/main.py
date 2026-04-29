@@ -13,12 +13,11 @@ TIME_WINDOW_INFEASIBLE = "TIME_WINDOW_INFEASIBLE"
 CAPACITY_EXCEEDED = "CAPACITY_EXCEEDED"
 SOLVER_TIMEOUT = "SOLVER_TIMEOUT"
 
-PRIORITY_PENALTIES = {
-    "urgent": 100000,
-    "normal": 10000,
-}
-
 LARGE_CAPACITY = 999999
+
+# Internal arc-cost unit: micro-DZD (1e-6 DZD). Keeps OR-Tools integer arc
+# costs precise without losing sub-meter / sub-second resolution.
+DZD_TO_MICRO = 1_000_000
 
 
 class ConfigIn(BaseModel):
@@ -28,10 +27,27 @@ class ConfigIn(BaseModel):
     # R5.2.4: hard pairwise upper bound on dropoff time relative to pickup.
     # Replaces the per-task dropoffDeadlineS with a global rule.
     dropoffWithinSeconds: int = Field(7200, ge=1)
-    # Fairness lever: km of detour the planner is willing to accept to move
-    # one task from the busiest driver to the least busy one. 0 = pure
-    # distance, no balancing. Higher = more aggressive balancing.
-    loadBalancingKmPerTask: int = Field(15, ge=0)
+    # Service time applied at every dropoff node (handover, signature).
+    # Worker overrides via Config.dropoffServiceMinutesDefault × 60.
+    dropoffServiceSeconds: int = Field(300, ge=0)
+    # Fairness lever: DZD of detour the planner accepts to move one task
+    # from the busiest driver to the least busy one. 0 = pure cost, no
+    # balancing. Replaces the old km-based knob in real currency units.
+    loadBalancingDzdPerTask: int = Field(45, ge=0)
+    # OR objective coefficients (micro-DZD). The arc cost evaluated by
+    # OR-Tools is fuel + time, both in the same unit:
+    #   arc_micro_dzd = distance_m × fuelCostMicroDzdPerMeter
+    #                 + travel_s × timeCostMicroDzdPerSecond
+    # Defaults: 2820 ≈ 2.82 DZD/km (6 L/100km × 47 DZD/L).
+    #           19444 ≈ 70 DZD/hour.
+    fuelCostMicroDzdPerMeter: int = Field(2820, ge=0)
+    timeCostMicroDzdPerSecond: int = Field(19444, ge=0)
+    # Penalty (DZD) for leaving a task unassigned. Sized to dwarf any
+    # plausible arc cost so every feasible task is assigned; the
+    # unassigned[] response only carries genuinely infeasible tasks.
+    # Translated to micro-DZD internally to match the arc-cost scale.
+    unassignedPenaltyNormalDzd: int = Field(100000, ge=0)
+    unassignedPenaltyUrgentDzd: int = Field(1000000, ge=0)
 
 
 class DriverIn(BaseModel):
@@ -156,8 +172,7 @@ def optimize(body: OptimizeRequest):
             node_coords.append((task.dropoffLat, task.dropoffLng))
             node_kinds.append("dropoff")
             node_task_idx.append(task_index)
-            # R5.2.3: dropoff service is removed from the model — always 0.
-            service_s.append(0)
+            service_s.append(body.config.dropoffServiceSeconds)
 
         total_nodes = len(node_coords)
         speed_mps = body.config.speedKmh * 1000.0 / 3600.0
@@ -193,20 +208,27 @@ def optimize(body: OptimizeRequest):
 
         distance_idx = routing.RegisterTransitCallback(distance_callback)
 
-        def objective_distance_callback(from_index: int, to_index: int) -> int:
-            distance_m = distance_callback(from_index, to_index)
-            if distance_m <= 0:
-                return 0
-            return max(1, int(math.ceil(distance_m / 1000.0)))
+        fuel_coef = body.config.fuelCostMicroDzdPerMeter
+        time_coef = body.config.timeCostMicroDzdPerSecond
 
-        objective_distance_idx = routing.RegisterTransitCallback(objective_distance_callback)
-        routing.SetArcCostEvaluatorOfAllVehicles(objective_distance_idx)
+        def travel_seconds(from_index: int, to_index: int) -> int:
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            if not return_to_depot and node_kinds[to_node] == "depot_end":
+                return 0
+            return time_matrix[from_node][to_node]
+
+        def arc_cost_callback(from_index: int, to_index: int) -> int:
+            distance_m = distance_callback(from_index, to_index)
+            travel_s = travel_seconds(from_index, to_index)
+            return distance_m * fuel_coef + travel_s * time_coef
+
+        arc_cost_idx = routing.RegisterTransitCallback(arc_cost_callback)
+        routing.SetArcCostEvaluatorOfAllVehicles(arc_cost_idx)
 
         def time_callback(from_index: int, to_index: int) -> int:
             from_node = manager.IndexToNode(from_index)
-            to_node = manager.IndexToNode(to_index)
-            travel = 0 if (not return_to_depot and node_kinds[to_node] == "depot_end") else time_matrix[from_node][to_node]
-            return service_s[from_node] + travel
+            return service_s[from_node] + travel_seconds(from_index, to_index)
 
         time_idx = routing.RegisterTransitCallback(time_callback)
         dropoff_within_seconds = body.config.dropoffWithinSeconds
@@ -248,10 +270,11 @@ def optimize(body: OptimizeRequest):
 
         # Fairness lever: track tasks-per-vehicle and penalise the gap between
         # the busiest and least-busy driver. Each pickup node contributes 1;
-        # SetGlobalSpanCostCoefficient adds K × (max - min) to the objective,
-        # so the planner only piles tasks on one driver when re-routing them
-        # would cost more km than the imbalance penalty buys.
-        if num_tasks > 0 and body.config.loadBalancingKmPerTask > 0:
+        # SetGlobalSpanCostCoefficient adds K × (max - min) to the objective.
+        # K is in the same micro-DZD unit as the arc cost, so a value of e.g.
+        # 45 DZD/task = 45_000_000 μDZD makes the planner accept up to 45 DZD
+        # of detour to flatten the workload by one task.
+        if num_tasks > 0 and body.config.loadBalancingDzdPerTask > 0:
             task_count_demands = [0] * total_nodes
             for task_index in range(num_tasks):
                 task_count_demands[pickup_nodes[task_index]] = 1
@@ -269,7 +292,7 @@ def optimize(body: OptimizeRequest):
             )
             task_count_dim = routing.GetDimensionOrDie("TaskCount")
             task_count_dim.SetGlobalSpanCostCoefficient(
-                int(body.config.loadBalancingKmPerTask)
+                body.config.loadBalancingDzdPerTask * DZD_TO_MICRO
             )
 
         has_capacity_dimension = any(driver.capacityUnits is not None for driver in drivers)
@@ -297,15 +320,10 @@ def optimize(body: OptimizeRequest):
                 "Capacity",
             )
 
-        routing.AddDimension(
-            objective_distance_idx,
-            0,
-            10**12,
-            True,
-            "DistanceCost",
-        )
-        distance_cost_dim = routing.GetDimensionOrDie("DistanceCost")
-        distance_cost_dim.SetGlobalSpanCostCoefficient(1)
+        # F8 — the DistanceCost span term that previously layered on top of
+        # the load-balancing dimension is gone. Fairness is now exactly one
+        # knob (loadBalancingDzdPerTask), and arc cost is the only remaining
+        # contributor to per-vehicle objective.
 
         routing.AddDimension(
             distance_idx,
@@ -316,6 +334,11 @@ def optimize(body: OptimizeRequest):
         )
         distance_dim = routing.GetDimensionOrDie("DistanceMeters")
 
+        priority_penalties_micro = {
+            "urgent": body.config.unassignedPenaltyUrgentDzd * DZD_TO_MICRO,
+            "normal": body.config.unassignedPenaltyNormalDzd * DZD_TO_MICRO,
+        }
+
         for task_index, task in enumerate(tasks):
             pickup_index = manager.NodeToIndex(pickup_nodes[task_index])
             dropoff_index = manager.NodeToIndex(dropoff_nodes[task_index])
@@ -323,7 +346,9 @@ def optimize(body: OptimizeRequest):
             solver.Add(routing.VehicleVar(pickup_index) == routing.VehicleVar(dropoff_index))
             solver.Add(time_dim.CumulVar(pickup_index) <= time_dim.CumulVar(dropoff_index))
             solver.Add(routing.ActiveVar(pickup_index) == routing.ActiveVar(dropoff_index))
-            penalty = PRIORITY_PENALTIES.get(task.priority, PRIORITY_PENALTIES["normal"])
+            penalty = priority_penalties_micro.get(
+                task.priority, priority_penalties_micro["normal"]
+            )
             pickup_penalty = penalty // 2
             dropoff_penalty = penalty - pickup_penalty
             routing.AddDisjunction([pickup_index], pickup_penalty)
