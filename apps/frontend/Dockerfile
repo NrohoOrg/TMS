@@ -12,6 +12,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/optimizer/project.json apps/optimizer/
 COPY packages/contracts/package.json packages/contracts/
 RUN pnpm install --frozen-lockfile
+RUN mkdir -p packages/contracts/node_modules
 
 # ===== Stage 2: builder =====
 FROM node:20-alpine AS builder
