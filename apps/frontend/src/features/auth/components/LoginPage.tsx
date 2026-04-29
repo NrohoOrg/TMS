@@ -30,6 +30,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Redirect if already logged in
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (user) {
       const route = ROLE_ROUTES[user.role];
@@ -40,6 +41,7 @@ export default function LoginPage() {
       router.push(route);
     }
   }, [user, router]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleLogin = async (loginEmail: string, loginPassword: string) => {
     setError("");

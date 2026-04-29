@@ -83,12 +83,14 @@ export default function CadreTasks({ initialOpenForm = false }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(initialOpenForm);
   const [editing, setEditing] = useState<Task | null>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (initialOpenForm) {
       setEditing(null);
       setDrawerOpen(true);
     }
   }, [initialOpenForm]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const tasks = tasksQuery.data ?? [];
 

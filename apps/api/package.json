@@ -5,7 +5,7 @@
   "scripts": {
     "build": "nest build",
     "lint": "eslint \"{src,test}/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "prisma generate && tsc --noEmit",
     "test": "jest --config ./jest.config.ts --passWithNoTests",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "start": "nest start",

@@ -35,7 +35,11 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
       - run: pnpm install --frozen-lockfile
+      - run: pip install -r apps/optimizer/requirements.txt
       - uses: nrwl/nx-set-shas@v4
       - run: pnpm nx affected -t lint typecheck --parallel=3
 
