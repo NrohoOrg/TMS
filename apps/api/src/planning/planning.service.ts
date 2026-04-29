@@ -623,38 +623,41 @@ export class PlanningService {
       }>;
     }>;
   }): Promise<void> {
-    const destination =
-      this.configService.get<string>('SMS_TEST_OVERRIDE_NUMBER') ?? '0556495709';
     const planDateLabel = plan.date.toISOString().slice(0, 10);
 
-    const route = plan.routes.find((r) => r.stops.length > 0) ?? plan.routes[0];
-    if (!route) {
-      this.publishLogger.warn(`Plan ${plan.id} has no routes — skipping test SMS`);
-      return;
-    }
+    // One SMS per driver, listing their own ordered stops. The test override
+    // (SMS_TEST_OVERRIDE_NUMBER) routes everything to a single number when set
+    // so we can verify wording without spamming real drivers.
+    await Promise.allSettled(
+      plan.routes.map(async (route) => {
+        if (route.stops.length === 0) return;
+        const lines = [`Bonjour ${route.driver.name}, votre tournee du ${planDateLabel}:`];
+        route.stops.forEach((stop, idx) => {
+          const eta = this.formatEtaSeconds(stop.etaS);
+          const address =
+            stop.type === StopType.pickup ? stop.task.pickupAddress : stop.task.dropoffAddress;
+          const action = stop.type === StopType.pickup ? 'Retrait' : 'Livraison';
+          lines.push(`${idx + 1}. ${eta} ${action} - ${stop.task.title} (${address})`);
+        });
+        lines.push('Bonne journee.');
+        const message = lines.join('\n');
+        const destination = this.smsService.resolveDestination(route.driver.phone);
 
-    const lines = [`Bonjour ${route.driver.name}, votre tournee du ${planDateLabel}:`];
-    route.stops.forEach((stop, idx) => {
-      const eta = this.formatEtaSeconds(stop.etaS);
-      const address =
-        stop.type === StopType.pickup ? stop.task.pickupAddress : stop.task.dropoffAddress;
-      const action = stop.type === StopType.pickup ? 'Retrait' : 'Livraison';
-      lines.push(`${idx + 1}. ${eta} ${action} - ${stop.task.title} (${address})`);
-    });
-    lines.push('Bonne journee.');
-    const message = lines.join('\n');
-
-    try {
-      const result = await this.smsService.send(destination, message, 'fr');
-      if (!result.success) {
-        this.publishLogger.warn(
-          `Test SMS to ${destination} not delivered: ${result.providerResponse}`,
-        );
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'unknown_error';
-      this.publishLogger.error(`Test SMS to ${destination} threw: ${reason}`);
-    }
+        try {
+          const result = await this.smsService.send(destination, message, 'fr');
+          if (!result.success) {
+            this.publishLogger.warn(
+              `SMS to ${route.driver.name} (${destination}) not delivered: ${result.providerResponse}`,
+            );
+          }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'unknown_error';
+          this.publishLogger.error(
+            `SMS to ${route.driver.name} (${destination}) threw: ${reason}`,
+          );
+        }
+      }),
+    );
   }
 
   async sendTestSms(): Promise<{
@@ -664,12 +667,22 @@ export class PlanningService {
     providerResponse: string;
     destination: string;
   }> {
-    const destination =
-      this.configService.get<string>('SMS_TEST_OVERRIDE_NUMBER') ?? '0556495709';
+    const override = (
+      this.configService.get<string>('SMS_TEST_OVERRIDE_NUMBER') ?? ''
+    ).trim();
+    if (!override) {
+      return {
+        success: false,
+        code: null,
+        messageId: null,
+        providerResponse: 'no_test_override_set',
+        destination: '',
+      };
+    }
     const message = `TMS test SMS — ${new Date().toISOString()}`;
-    this.publishLogger.log(`Sending test SMS to ${destination}`);
-    const result = await this.smsService.send(destination, message, 'fr');
-    return { ...result, destination };
+    this.publishLogger.log(`Sending test SMS to ${override}`);
+    const result = await this.smsService.send(override, message, 'fr');
+    return { ...result, destination: override };
   }
 
   private formatEtaSeconds(etaS: number): string {

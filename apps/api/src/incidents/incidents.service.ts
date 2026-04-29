@@ -12,6 +12,7 @@ import {
   isStopDispatcherCancelled,
 } from '../planning/frozen-plan.helpers';
 import { ManualPlanningService } from '../planning/manual-planning.service';
+import { SmsService } from '../sms/sms.service';
 import {
   DriverSnapshot,
   ExistingStop,
@@ -89,6 +90,7 @@ export class IncidentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly manualPlanningService: ManualPlanningService,
+    private readonly smsService: SmsService,
   ) {}
 
   /**
@@ -653,6 +655,16 @@ export class IncidentsService {
       workingByDriver.set(a.driverId, items);
     }
 
+    // Notify each affected driver by SMS that one or more new tasks were
+    // attached to their route mid-day. Skipped on dry-run since nothing was
+    // actually persisted. Errors are logged and never block the response.
+    if (!dryRun && assignmentSummaries.length > 0) {
+      void this.notifyDriversOfMidDayAssignments(
+        plan.id,
+        assignmentSummaries,
+      );
+    }
+
     return finalize({
       date: dateString,
       publishedPlanId: plan.id,
@@ -662,6 +674,84 @@ export class IncidentsService {
       assignments: assignmentSummaries,
       dryRun,
     });
+  }
+
+  /**
+   * Send one SMS per affected driver listing the new task(s) added to their
+   * route, with the resolved pickup ETA after the post-recalc reshuffle and
+   * the existing stop they land right after.
+   */
+  private async notifyDriversOfMidDayAssignments(
+    planId: string,
+    assignments: MidDayAssignmentSummary[],
+  ): Promise<void> {
+    // Group new assignments by driver.
+    const byDriver = new Map<string, MidDayAssignmentSummary[]>();
+    for (const a of assignments) {
+      const list = byDriver.get(a.driverId) ?? [];
+      list.push(a);
+      byDriver.set(a.driverId, list);
+    }
+    if (byDriver.size === 0) return;
+
+    // Pull each affected driver's name + phone, plus the freshly-recomputed
+    // pickup ETAs for the new tasks on their route.
+    const drivers = await this.prisma.driver.findMany({
+      where: { id: { in: [...byDriver.keys()] } },
+      select: { id: true, name: true, phone: true },
+    });
+    const driverById = new Map(drivers.map((d) => [d.id, d]));
+
+    const newTaskIds = assignments.map((a) => a.taskId);
+    const newPickupStops = await this.prisma.stop.findMany({
+      where: {
+        route: { planId },
+        taskId: { in: newTaskIds },
+        type: StopType.pickup,
+      },
+      select: { taskId: true, etaS: true },
+    });
+    const etaByTaskId = new Map(newPickupStops.map((s) => [s.taskId, s.etaS]));
+
+    const formatEta = (etaS: number) => {
+      const total = Math.max(0, Math.floor(etaS));
+      const h = Math.floor(total / 3600) % 24;
+      const m = Math.floor((total % 3600) / 60);
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
+
+    await Promise.allSettled(
+      [...byDriver.entries()].map(async ([driverId, list]) => {
+        const driver = driverById.get(driverId);
+        if (!driver) return;
+        const lines = [
+          `Bonjour ${driver.name}, ${list.length} tache(s) ajoutee(s) a votre tournee:`,
+        ];
+        for (const a of list) {
+          const eta = formatEta(etaByTaskId.get(a.taskId) ?? 0);
+          const after = a.insertedAfterTaskTitle
+            ? ` apres "${a.insertedAfterTaskTitle}"`
+            : ' au debut de votre tournee';
+          lines.push(`- ${eta} ${a.taskTitle}${after}`);
+        }
+        lines.push('Bonne journee.');
+        const message = lines.join('\n');
+        const destination = this.smsService.resolveDestination(driver.phone);
+        try {
+          const res = await this.smsService.send(destination, message, 'fr');
+          if (!res.success) {
+            this.logger.warn(
+              `Mid-day SMS to ${driver.name} (${destination}) not delivered: ${res.providerResponse}`,
+            );
+          }
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'unknown_error';
+          this.logger.error(
+            `Mid-day SMS to ${driver.name} (${destination}) threw: ${reason}`,
+          );
+        }
+      }),
+    );
   }
 
   /**

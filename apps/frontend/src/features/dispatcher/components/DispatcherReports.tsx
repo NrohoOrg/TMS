@@ -43,7 +43,7 @@ export default function DispatcherReports() {
   const r = reportsQuery.data;
 
   function handleExport() {
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://172.20.10.2:3001/api";
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
     const path = exportReportsUrl({ period });
     window.open(`${apiBase}${path}`, "_blank");
   }

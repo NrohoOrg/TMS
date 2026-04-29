@@ -20,9 +20,14 @@ describe('IncidentsService — v1.1 R1.3 driver unavailability', () => {
     recalculateRouteForIncidents: jest.fn().mockResolvedValue(undefined),
   };
 
+  const smsService = {
+    resolveDestination: jest.fn((p: string) => p),
+    send: jest.fn().mockResolvedValue({ success: true, code: '1701', messageId: '1', providerResponse: 'ok' }),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new IncidentsService(prisma as any, manualPlanningService as any);
+    service = new IncidentsService(prisma as any, manualPlanningService as any, smsService as any);
   });
 
   describe('previewDriverUnavailable', () => {
@@ -275,7 +280,7 @@ describe('IncidentsService — v1.1 R1.7 perf budgets', () => {
     const manualPlanningService: any = {
       recalculateRouteForIncidents: jest.fn(),
     };
-    const service = new IncidentsService(prisma, manualPlanningService);
+    const service = new IncidentsService(prisma as any, manualPlanningService as any, { resolveDestination: (p: string) => p, send: async () => ({ success: true, code: "1701", messageId: "1", providerResponse: "ok" }) } as any);
 
     const t0 = Date.now();
     await service.markDriverUnavailable({
@@ -294,7 +299,7 @@ describe('IncidentsService — v1.1 R1.7 perf budgets', () => {
     const manualPlanningService: any = {
       recalculateRouteForIncidents: jest.fn(),
     };
-    const service = new IncidentsService(prisma, manualPlanningService);
+    const service = new IncidentsService(prisma as any, manualPlanningService as any, { resolveDestination: (p: string) => p, send: async () => ({ success: true, code: "1701", messageId: "1", providerResponse: "ok" }) } as any);
 
     const t0 = Date.now();
     await service.runMidDayReoptimization('2026-04-27');
@@ -341,7 +346,7 @@ describe('IncidentsService — v1.1 R1.7 perf budgets', () => {
     const manualPlanningService: any = {
       recalculateRouteForIncidents: jest.fn(),
     };
-    const service = new IncidentsService(prisma, manualPlanningService);
+    const service = new IncidentsService(prisma as any, manualPlanningService as any, { resolveDestination: (p: string) => p, send: async () => ({ success: true, code: "1701", messageId: "1", providerResponse: "ok" }) } as any);
 
     const t0 = Date.now();
     await service.runMidDayReoptimization('2026-04-27');
@@ -410,7 +415,7 @@ describe('IncidentsService — v1.1 R1.7 perf budgets', () => {
     const manualPlanningService: any = {
       recalculateRouteForIncidents: jest.fn(),
     };
-    const service = new IncidentsService(prisma, manualPlanningService);
+    const service = new IncidentsService(prisma as any, manualPlanningService as any, { resolveDestination: (p: string) => p, send: async () => ({ success: true, code: "1701", messageId: "1", providerResponse: "ok" }) } as any);
 
     const t0 = Date.now();
     await service.runUrgentInterrupt({ taskId: 't-urgent', date: '2026-04-27' });

@@ -1,5 +1,5 @@
 const BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://172.20.10.2:3001/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001/api";
 
 // ---------------------------------------------------------------------------
 // Token helpers
