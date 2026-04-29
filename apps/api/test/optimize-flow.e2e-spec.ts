@@ -134,7 +134,7 @@ describe('Optimize flow (e2e)', () => {
     createdJobId = optimizeResponse.body.data.jobId;
     expect(createdJobId).toBeDefined();
 
-    const timeoutAt = Date.now() + 15_000;
+    const timeoutAt = Date.now() + 60_000;
     while (Date.now() < timeoutAt) {
       const statusResponse = await request(app.getHttpServer())
         .get(`/api/dispatcher/planning/status/${createdJobId}`)

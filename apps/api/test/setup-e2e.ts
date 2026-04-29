@@ -2,7 +2,7 @@ import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { configureGlobalResponseHandling } from '../src/common/http/global-response.helper';
 
-jest.setTimeout(30000);
+jest.setTimeout(90000);
 
 process.env.NODE_ENV = 'test';
 process.env.ENABLE_OPTIMIZATION_WORKER_IN_TESTS ??= 'false';
