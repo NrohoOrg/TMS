@@ -17,6 +17,7 @@ type OptimizerRequest = {
     returnToDepot: boolean;
     dropoffWithinSeconds: number;
     dropoffServiceSeconds: number;
+    colocatedMarginalServiceSeconds: number;
     loadBalancingDzdPerTask: number;
     fuelCostMicroDzdPerMeter: number;
     timeCostMicroDzdPerSecond: number;
@@ -173,6 +174,7 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
             speedKmh: true,
             dropoffWithinHours: true,
             dropoffServiceMinutesDefault: true,
+            colocatedMarginalServiceSeconds: true,
             loadBalancingKmPerTask: true,
             fuelLPer100Km: true,
             dieselPricePerLiterDZD: true,
@@ -321,6 +323,7 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           returnToDepot: job.data.returnToDepot,
           dropoffWithinSeconds: config.dropoffWithinHours * 3600,
           dropoffServiceSeconds,
+          colocatedMarginalServiceSeconds: config.colocatedMarginalServiceSeconds,
           loadBalancingDzdPerTask,
           fuelCostMicroDzdPerMeter,
           timeCostMicroDzdPerSecond,
