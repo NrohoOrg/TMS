@@ -451,24 +451,26 @@ async function main() {
   }
   console.log('Created availability records for today');
 
-  // ── Config ──
+  // ── Config (Hyundai Accent fleet on petrol; equal weight on time + fuel) ──
+  const configValues = {
+    maxSolveSeconds: 30,
+    speedKmh: 50,
+    objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
+    pickupServiceMinutesDefault: 20,
+    dropoffServiceMinutesDefault: 5,
+    dropoffWithinHours: 2,
+    loadBalancingKmPerTask: 15,
+    co2GramsPerKm: 140,
+    fuelLPer100Km: 6,
+    dieselPricePerLiterDZD: 47,
+    timeCostDzdPerHour: 70,
+    unassignedPenaltyNormalDzd: 100000,
+    unassignedPenaltyUrgentDzd: 1000000,
+  };
   await prisma.config.upsert({
     where: { id: 1 },
-    update: {
-      maxSolveSeconds: 30,
-      speedKmh: 50,
-      objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
-      pickupServiceMinutesDefault: 20,
-      dropoffWithinHours: 2,
-    },
-    create: {
-      id: 1,
-      maxSolveSeconds: 30,
-      speedKmh: 50,
-      objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
-      pickupServiceMinutesDefault: 20,
-      dropoffWithinHours: 2,
-    },
+    update: configValues,
+    create: { id: 1, ...configValues },
   });
   console.log('Config updated');
 

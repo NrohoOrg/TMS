@@ -212,16 +212,51 @@ model Config {
   speedKmh                    Float    @default(40)
   objectiveWeights            Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
   pickupServiceMinutesDefault Int      @default(20)
+  dropoffServiceMinutesDefault Int     @default(5)
   dropoffWithinHours          Int      @default(2)
   loadBalancingKmPerTask      Int      @default(15)
-  // Impact / KPI constants. Tunable without code changes.
-  co2GramsPerKm               Int      @default(171)   // EEA avg, light commercial diesel
-  fuelLPer100Km               Float    @default(8)     // typical delivery van
-  dieselPricePerLiterDZD      Int      @default(29)    // ~Algerian retail
+  // Impact / KPI constants and OR objective coefficients. Defaults reflect
+  // a Hyundai Accent fleet on essence sans plomb at 47 DZD/L.
+  // dieselPricePerLiterDZD field name is preserved for back-compat with the
+  // impact endpoint; it now holds the petrol price in DZD/L.
+  co2GramsPerKm               Int      @default(140)
+  fuelLPer100Km               Float    @default(6)
+  dieselPricePerLiterDZD      Int      @default(47)
+  // Hourly time-cost in DZD used in the OR objective. Calibrated so that
+  // 1 km of fuel and 1 hour of driving have equivalent weight at typical
+  // Algiers urban speed (~25 km/h). Lower = optimizer favours shorter
+  // distance; higher = favours shorter time.
+  timeCostDzdPerHour          Float    @default(70)
+  // Penalty (DZD) for leaving a task unassigned. Sized to dwarf any
+  // plausible arc cost so every feasible task is assigned; the
+  // unassigned[] response only carries genuinely infeasible tasks
+  // (TIME_WINDOW_INFEASIBLE, CAPACITY_EXCEEDED, NO_DRIVER_AVAILABLE).
+  // Urgent > normal preserves priority when capacity is the bottleneck.
+  unassignedPenaltyNormalDzd  Int      @default(100000)
+  unassignedPenaltyUrgentDzd  Int      @default(1000000)
   // Cap on outbound SMS per calendar day (UTC). Once reached, sms.service
   // refuses additional sends and returns success=false. Admin-tunable.
   smsDailyLimit               Int      @default(50)
   updatedAt                   DateTime @updatedAt
+}
+
+/// Persistent cache of road-routing matrix entries (distance + duration)
+/// between two coordinates. Filled on cache miss by GoogleDistanceMatrixProvider
+/// and never expires — Algiers road geometry changes rarely, and Google's
+/// own freshness is what matters most. Coordinates are stored rounded to
+/// 5 decimals (~1 m) so near-duplicate addresses share a row.
+model RouteMatrixCache {
+  id         String   @id @default(uuid())
+  fromLat    Float
+  fromLng    Float
+  toLat      Float
+  toLng      Float
+  distanceM  Int
+  durationS  Int
+  computedAt DateTime @default(now())
+
+  @@unique([fromLat, fromLng, toLat, toLng], name: "route_matrix_pair")
+  @@index([fromLat, fromLng])
 }
 
 /// One row per outbound SMS attempt that actually hit the provider.
