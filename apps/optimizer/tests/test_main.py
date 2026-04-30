@@ -113,6 +113,84 @@ def test_urgent_penalty_dwarfs_arc_cost() -> None:
     assert data["unassigned"] == []
 
 
+def _carpool_payload() -> dict:
+    """Three tasks with identical pickup coords, identical dropoff coords,
+    and a narrow shared pickup window (08:00–08:30). Single driver with
+    capacity 4 and depot at the pickup."""
+    pickup_lat, pickup_lng = 36.7372, 3.0865
+    dropoff_lat, dropoff_lng = 36.7300, 2.9900
+    return {
+        "jobId": "job-carpool",
+        "config": {
+            "maxSolveSeconds": 5,
+            "speedKmh": 50,
+            "returnToDepot": False,
+            "dropoffWithinSeconds": 7200,
+            "colocatedMarginalServiceSeconds": 60,
+        },
+        "drivers": [
+            {
+                "id": "driver-1",
+                "shiftStartS": 28800,
+                "shiftEndS": 61200,
+                "depotLat": pickup_lat,
+                "depotLng": pickup_lng,
+                "capacityUnits": 4,
+            }
+        ],
+        "tasks": [
+            {
+                "id": f"task-{i}",
+                "priority": "normal",
+                "pickupLat": pickup_lat,
+                "pickupLng": pickup_lng,
+                "pickupWindowStartS": 28800,  # 08:00
+                "pickupWindowEndS": 30600,  # 08:30 — narrow on purpose
+                "pickupServiceS": 1200,  # 20 min full service
+                "dropoffLat": dropoff_lat,
+                "dropoffLng": dropoff_lng,
+                "capacityUnits": 1,
+            }
+            for i in range(1, 4)
+        ],
+    }
+
+
+def test_carpool_three_same_address_fit_one_driver() -> None:
+    """With marginal service collapse, 3 riders boarding at the same
+    address inside a 30-min window all assign to the same driver."""
+    response = client.post("/optimize", json=_carpool_payload())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["unassigned"] == [], (
+        f"Expected all carpool tasks assigned, got: {data['unassigned']}"
+    )
+    assert len(data["routes"]) == 1
+    pickups = [s for s in data["routes"][0]["stops"] if s["type"] == "pickup"]
+    dropoffs = [s for s in data["routes"][0]["stops"] if s["type"] == "dropoff"]
+    assert len(pickups) == 3
+    assert len(dropoffs) == 3
+    # All three pickup arrivals fit inside the 30-min window.
+    for stop in pickups:
+        assert 28800 <= stop["arrivalS"] <= 30600
+
+
+def test_carpool_without_marginal_collapse_reproduces_original_drop() -> None:
+    """Sanity-check the feature against the bug it was built to fix:
+    with the marginal knob disabled, 20-min pickups stack so only the
+    first two fit inside the 30-min window — and the third is dropped.
+    This mirrors the dispatcher screenshot that motivated this branch
+    (Badri picks 2, Amel is left unassigned)."""
+    payload = _carpool_payload()
+    payload["config"]["colocatedMarginalServiceSeconds"] = 1200  # = full
+
+    response = client.post("/optimize", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["unassigned"]) == 1
+    assert data["unassigned"][0]["taskId"] == "task-3"
+
+
 def test_normal_penalty_below_arc_cost_drops_task() -> None:
     """If the normal-task penalty is set below the marginal fuel cost of
     the detour, the optimizer should leave the task unassigned."""

@@ -30,6 +30,12 @@ class ConfigIn(BaseModel):
     # Service time applied at every dropoff node (handover, signature).
     # Worker overrides via Config.dropoffServiceMinutesDefault × 60.
     dropoffServiceSeconds: int = Field(300, ge=0)
+    # Carpool / shared-trip support: when the route visits the same
+    # coordinates back-to-back, every stop except the last in the cluster
+    # contributes only this marginal service time, and the full service
+    # is paid once when the driver actually leaves the cluster. Default
+    # 60 s ≈ "name confirm + door close per extra rider".
+    colocatedMarginalServiceSeconds: int = Field(60, ge=0)
     # Fairness lever: DZD of detour the planner accepts to move one task
     # from the busiest driver to the least busy one. 0 = pure cost, no
     # balancing. Replaces the old km-based knob in real currency units.
@@ -252,9 +258,25 @@ def optimize(body: OptimizeRequest):
         arc_cost_idx = routing.RegisterTransitCallback(arc_cost_callback)
         routing.SetArcCostEvaluatorOfAllVehicles(arc_cost_idx)
 
+        marginal_service = body.config.colocatedMarginalServiceSeconds
+
         def time_callback(from_index: int, to_index: int) -> int:
             from_node = manager.IndexToNode(from_index)
-            return service_s[from_node] + travel_seconds(from_index, to_index)
+            to_node = manager.IndexToNode(to_index)
+            travel = travel_seconds(from_index, to_index)
+            # Carpool / shared-trip: when the next stop on the route is
+            # at the same coordinates as the current stop AND both are
+            # task service events (not a depot transition), the current
+            # stop's service collapses to a small marginal cost. The
+            # full service is paid only when the driver leaves the
+            # cluster (i.e. the next stop is somewhere different).
+            if (
+                node_kinds[from_node] in {"pickup", "dropoff"}
+                and node_kinds[to_node] in {"pickup", "dropoff"}
+                and node_coords[from_node] == node_coords[to_node]
+            ):
+                return marginal_service + travel
+            return service_s[from_node] + travel
 
         time_idx = routing.RegisterTransitCallback(time_callback)
         dropoff_within_seconds = body.config.dropoffWithinSeconds

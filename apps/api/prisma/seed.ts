@@ -458,6 +458,7 @@ async function main() {
     objectiveWeights: { urgent: 1000, high: 500, normal: 100, low: 10 },
     pickupServiceMinutesDefault: 20,
     dropoffServiceMinutesDefault: 5,
+    colocatedMarginalServiceSeconds: 60,
     dropoffWithinHours: 2,
     loadBalancingKmPerTask: 15,
     co2GramsPerKm: 140,

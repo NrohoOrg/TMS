@@ -213,6 +213,13 @@ model Config {
   objectiveWeights            Json    @default("{\"urgent\":1000,\"high\":500,\"normal\":100,\"low\":10}")
   pickupServiceMinutesDefault Int      @default(20)
   dropoffServiceMinutesDefault Int     @default(5)
+  // Carpool / shared-trip lever. When the driver visits the same
+  // coordinates back-to-back (e.g. three passengers boarding at one
+  // address), every stop in the cluster except the last is charged this
+  // marginal service time instead of the full pickup/dropoff service.
+  // The full service is paid once when the driver actually leaves the
+  // cluster. Default 60 s ≈ "name confirm + door close per extra rider".
+  colocatedMarginalServiceSeconds Int  @default(60)
   dropoffWithinHours          Int      @default(2)
   loadBalancingKmPerTask      Int      @default(15)
   // Impact / KPI constants and OR objective coefficients. Defaults reflect
