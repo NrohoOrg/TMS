@@ -36,10 +36,21 @@ class ConfigIn(BaseModel):
     # is paid once when the driver actually leaves the cluster. Default
     # 60 s ≈ "name confirm + door close per extra rider".
     colocatedMarginalServiceSeconds: int = Field(60, ge=0)
-    # Fairness lever: DZD of detour the planner accepts to move one task
-    # from the busiest driver to the least busy one. 0 = pure cost, no
-    # balancing. Replaces the old km-based knob in real currency units.
-    loadBalancingDzdPerTask: int = Field(45, ge=0)
+    # Deprecated: superseded by loadBalancingDzdPerActiveMinute. The
+    # task-count-based fairness term it controlled treated 3 colocated
+    # pickups as 3 stops of "load" and was blind to per-driver idle gaps,
+    # so it sometimes shoved a near-cluster task onto a driver who was
+    # busy across the city, or left a driver idle for hours. Kept here
+    # only so older worker payloads still validate; ignored at solve time.
+    loadBalancingDzdPerTask: int = Field(0, ge=0)
+    # Fairness lever: penalty (DZD) per minute of *active working time*
+    # imbalance between the busiest and least-busy driver. Active time
+    # counts travel + service (with the colocated-marginal collapse) but
+    # excludes any idle wait at pickup time windows, so it correctly
+    # rewards filling a driver's dead time with mid-shift tasks. Default
+    # 2.0 ≈ 120 DZD per hour of imbalance — same magnitude as the old
+    # ~42 DZD/task lever at a typical 20 min/task.
+    loadBalancingDzdPerActiveMinute: float = Field(2.0, ge=0)
     # OR objective coefficients (micro-DZD). The arc cost evaluated by
     # OR-Tools is fuel + time, both in the same unit:
     #   arc_micro_dzd = distance_m × fuelCostMicroDzdPerMeter
@@ -317,41 +328,32 @@ def optimize(body: OptimizeRequest):
             )
 
         # Fairness lever: penalise the gap between the busiest and least-busy
-        # driver via SetGlobalSpanCostCoefficient (K × (max - min)). The
-        # increment is "distinct pickup-cluster transitions": leaving a
-        # pickup node counts 1 only if the next stop is at a different
-        # coordinate. Same-coord pickup→pickup transitions stay inside the
-        # carpool cluster and contribute 0, mirroring the marginal-service
-        # collapse in time_callback. This way three colocated pickups count
-        # as one stop for fairness purposes, so a near-but-not-colocated
-        # additional task naturally lands on the driver already handling
-        # the cluster instead of being shoved onto a busier driver to
-        # equalise raw task counts.
-        if num_tasks > 0 and body.config.loadBalancingDzdPerTask > 0:
-            def task_count_transit(from_index: int, to_index: int) -> int:
-                from_node = manager.IndexToNode(from_index)
-                if node_kinds[from_node] != "pickup":
-                    return 0
-                to_node = manager.IndexToNode(to_index)
-                if (
-                    node_kinds[to_node] == "pickup"
-                    and node_coords[from_node] == node_coords[to_node]
-                ):
-                    return 0
-                return 1
-
-            task_count_idx = routing.RegisterTransitCallback(task_count_transit)
+        # driver in *active working time* (travel + service, with the
+        # colocated-marginal collapse already baked into time_callback).
+        # The ActiveTime dimension reuses time_idx with zero slack so its
+        # cumul accumulates only effective work — any wait imposed by a
+        # pickup time window stays in the Time dimension's slack and does
+        # not inflate ActiveTime. Spanning ActiveTime across vehicles via
+        # SetGlobalSpanCostCoefficient therefore rewards filling a
+        # driver's dead time with mid-shift tasks instead of piling them
+        # on a driver who is already busy elsewhere.
+        if num_tasks > 0 and body.config.loadBalancingDzdPerActiveMinute > 0:
             routing.AddDimension(
-                task_count_idx,
+                time_idx,
                 0,
-                num_tasks,
+                time_horizon,
                 True,
-                "TaskCount",
+                "ActiveTime",
             )
-            task_count_dim = routing.GetDimensionOrDie("TaskCount")
-            task_count_dim.SetGlobalSpanCostCoefficient(
-                body.config.loadBalancingDzdPerTask * DZD_TO_MICRO
-            )
+            active_time_dim = routing.GetDimensionOrDie("ActiveTime")
+            # Convert DZD/minute → micro-DZD/second so the coefficient
+            # matches the cumul's second-resolution units and the same
+            # micro-DZD scale as the arc cost.
+            coef_per_second = int(round(
+                body.config.loadBalancingDzdPerActiveMinute * DZD_TO_MICRO / 60
+            ))
+            if coef_per_second > 0:
+                active_time_dim.SetGlobalSpanCostCoefficient(coef_per_second)
 
         has_capacity_dimension = any(driver.capacityUnits is not None for driver in drivers)
         if has_capacity_dimension:
