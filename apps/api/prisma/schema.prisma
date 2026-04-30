@@ -54,6 +54,11 @@ model Driver {
   depotLat      Float
   depotLng      Float
   capacityUnits Int?
+  // The driver's assigned vehicle. Captured at driver-create time alongside
+  // the driver's personal info — the fleet runs 1 vehicle per driver, so a
+  // separate Vehicle table would be overkill.
+  vehicleName   String?
+  vehiclePlate  String?
   active        Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -244,6 +249,10 @@ model Config {
   // Cap on outbound SMS per calendar day (UTC). Once reached, sms.service
   // refuses additional sends and returns success=false. Admin-tunable.
   smsDailyLimit               Int      @default(50)
+  // Master kill-switch for outbound SMS. Off during demos/tests so we don't
+  // burn provider credits. When false, sms.service.send returns early with
+  // a no-op result and never calls the provider.
+  smsEnabled                  Boolean  @default(true)
   updatedAt                   DateTime @updatedAt
 }
 

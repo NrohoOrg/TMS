@@ -46,6 +46,8 @@ export interface Driver {
   depotLat: number;
   depotLng: number;
   capacityUnits: number | null;
+  vehicleName: string | null;
+  vehiclePlate: string | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -275,6 +277,7 @@ export interface AdminConfig {
   maxSolveSeconds: number;
   speedKmh: number;
   objectiveWeights: Record<string, number>;
+  smsEnabled: boolean;
   updatedAt: string;
 }
 

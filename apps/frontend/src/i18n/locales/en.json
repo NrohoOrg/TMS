@@ -536,6 +536,7 @@
       "tableShift": "Shift",
       "tableDepot": "Depot",
       "tableCapacity": "Capacity",
+      "tableVehicle": "Vehicle",
       "tableStatus": "Status",
       "tableActions": "Actions",
       "driverCreated": "Driver created",
@@ -549,6 +550,10 @@
       "depotLng": "Depot longitude",
       "depotFixed": "Every driver starts and ends the day at {{name}}.",
       "capacityUnits": "Capacity units",
+      "vehicleName": "Vehicle name",
+      "vehicleNamePlaceholder": "e.g. Renault Kangoo",
+      "vehiclePlate": "Vehicle number",
+      "vehiclePlatePlaceholder": "e.g. 00123-456-16",
       "active": "Active"
     },
     "config": {
@@ -715,6 +720,15 @@
       "errorMismatch": "New password and confirmation do not match.",
       "errorSame": "New password must be different from the current one.",
       "errorCurrentInvalid": "Current password is incorrect."
+    },
+    "sms": {
+      "title": "SMS notifications",
+      "subtitle": "Master switch for outbound SMS to drivers. Turn off during demos or testing to avoid burning provider credits.",
+      "toggleLabel": "Enable SMS sending",
+      "statusOn": "SMS are being sent to drivers.",
+      "statusOff": "SMS sending is disabled — drivers will not receive messages.",
+      "enabledToast": "SMS enabled",
+      "disabledToast": "SMS disabled"
     }
   },
   "cadre": {

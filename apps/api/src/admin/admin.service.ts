@@ -80,6 +80,9 @@ export class AdminService {
     if (dto.objectiveWeights !== undefined) {
       updateData.objectiveWeights = dto.objectiveWeights as Prisma.InputJsonValue;
     }
+    if (dto.smsEnabled !== undefined) {
+      updateData.smsEnabled = dto.smsEnabled;
+    }
 
     const createData: Prisma.ConfigCreateInput = {
       id: 1,
@@ -88,6 +91,7 @@ export class AdminService {
       ...(dto.objectiveWeights !== undefined
         ? { objectiveWeights: dto.objectiveWeights as Prisma.InputJsonValue }
         : {}),
+      ...(dto.smsEnabled !== undefined ? { smsEnabled: dto.smsEnabled } : {}),
     };
 
     return this.prisma.config.upsert({

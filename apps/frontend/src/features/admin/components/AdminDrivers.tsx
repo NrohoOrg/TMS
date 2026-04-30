@@ -49,6 +49,8 @@ interface DriverForm {
   shiftStart: string;
   shiftEnd: string;
   capacityUnits: number | null;
+  vehicleName: string;
+  vehiclePlate: string;
   active: boolean;
 }
 
@@ -58,6 +60,8 @@ const EMPTY: DriverForm = {
   shiftStart: "08:00",
   shiftEnd: "17:00",
   capacityUnits: null,
+  vehicleName: "",
+  vehiclePlate: "",
   active: true,
 };
 
@@ -97,6 +101,8 @@ export default function AdminDrivers() {
       shiftStart: d.shiftStart,
       shiftEnd: d.shiftEnd,
       capacityUnits: d.capacityUnits,
+      vehicleName: d.vehicleName ?? "",
+      vehiclePlate: d.vehiclePlate ?? "",
       active: d.active,
     });
     setOpen(true);
@@ -115,6 +121,8 @@ export default function AdminDrivers() {
     // each day at the Ministère des Startups. Form does not ask for it.
     const payload = {
       ...form,
+      vehicleName: form.vehicleName.trim() || null,
+      vehiclePlate: form.vehiclePlate.trim() || null,
       depotLat: MINISTRY_DEPOT.lat,
       depotLng: MINISTRY_DEPOT.lng,
     };
@@ -197,6 +205,7 @@ export default function AdminDrivers() {
                   <TableHead>{tFn("admin.drivers.tableShift")}</TableHead>
                   <TableHead>{tFn("admin.drivers.tableDepot")}</TableHead>
                   <TableHead>{tFn("admin.drivers.tableCapacity")}</TableHead>
+                  <TableHead>{tFn("admin.drivers.tableVehicle")}</TableHead>
                   <TableHead>{tFn("admin.drivers.tableStatus")}</TableHead>
                   <TableHead className="w-24">{tFn("admin.drivers.tableActions")}</TableHead>
                 </TableRow>
@@ -213,6 +222,18 @@ export default function AdminDrivers() {
                       {d.depotLat.toFixed(3)}, {d.depotLng.toFixed(3)}
                     </TableCell>
                     <TableCell className="text-xs">{d.capacityUnits ?? "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {d.vehicleName || d.vehiclePlate ? (
+                        <div className="space-y-0.5">
+                          <div className="font-medium">{d.vehicleName ?? "—"}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">
+                            {d.vehiclePlate ?? "—"}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         className={
@@ -301,6 +322,24 @@ export default function AdminDrivers() {
                   })
                 }
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>{tFn("admin.drivers.vehicleName")}</Label>
+                <Input
+                  value={form.vehicleName}
+                  onChange={(e) => setForm({ ...form, vehicleName: e.target.value })}
+                  placeholder={tFn("admin.drivers.vehicleNamePlaceholder")}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{tFn("admin.drivers.vehiclePlate")}</Label>
+                <Input
+                  value={form.vehiclePlate}
+                  onChange={(e) => setForm({ ...form, vehiclePlate: e.target.value })}
+                  placeholder={tFn("admin.drivers.vehiclePlatePlaceholder")}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <Label>{tFn("admin.drivers.active")}</Label>
