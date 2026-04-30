@@ -8,6 +8,7 @@ import {
   useUpdateTask,
 } from "@/features/shared/hooks";
 import { useGeocode } from "@/features/shared/hooks/useGeocode";
+import { useRecentPlaces, type RecentPlace } from "@/features/shared/hooks/useRecentPlaces";
 import { geocodeResolve } from "@/lib/api-services";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { MapView, type MapMarker } from "@/components/map";
 import type { Task } from "@/types/api";
-import { Loader2, MapPin } from "lucide-react";
+import { Clock, Loader2, MapPin } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -124,6 +125,9 @@ export function TaskFormDrawer({
   });
   const [pickupQuery, setPickupQuery] = useState("");
   const [dropoffQuery, setDropoffQuery] = useState("");
+  const [pickupFocused, setPickupFocused] = useState(false);
+  const [dropoffFocused, setDropoffFocused] = useState(false);
+  const { recents, addRecent } = useRecentPlaces();
 
   useEffect(() => {
     if (open) {
@@ -168,6 +172,7 @@ export function TaskFormDrawer({
   async function selectPickup(suggestion: { placeId: string; displayName: string; lat: number; lng: number }) {
     setForm((f) => ({ ...f, pickupAddress: suggestion.displayName }));
     setPickupQuery("");
+    setPickupFocused(false);
     setResolvingPlace("pickup");
     const coords = await resolveCoords(suggestion.placeId, suggestion.lat, suggestion.lng);
     setResolvingPlace(null);
@@ -180,11 +185,18 @@ export function TaskFormDrawer({
       return;
     }
     setForm((f) => ({ ...f, pickupLat: coords.lat, pickupLng: coords.lng }));
+    addRecent({
+      placeId: suggestion.placeId,
+      displayName: suggestion.displayName,
+      lat: coords.lat,
+      lng: coords.lng,
+    });
   }
 
   async function selectDropoff(suggestion: { placeId: string; displayName: string; lat: number; lng: number }) {
     setForm((f) => ({ ...f, dropoffAddress: suggestion.displayName }));
     setDropoffQuery("");
+    setDropoffFocused(false);
     setResolvingPlace("dropoff");
     const coords = await resolveCoords(suggestion.placeId, suggestion.lat, suggestion.lng);
     setResolvingPlace(null);
@@ -197,7 +209,52 @@ export function TaskFormDrawer({
       return;
     }
     setForm((f) => ({ ...f, dropoffLat: coords.lat, dropoffLng: coords.lng }));
+    addRecent({
+      placeId: suggestion.placeId,
+      displayName: suggestion.displayName,
+      lat: coords.lat,
+      lng: coords.lng,
+    });
   }
+
+  function selectRecent(target: "pickup" | "dropoff", recent: RecentPlace) {
+    if (target === "pickup") {
+      setForm((f) => ({
+        ...f,
+        pickupAddress: recent.displayName,
+        pickupLat: recent.lat,
+        pickupLng: recent.lng,
+      }));
+      setPickupQuery("");
+      setPickupFocused(false);
+    } else {
+      setForm((f) => ({
+        ...f,
+        dropoffAddress: recent.displayName,
+        dropoffLat: recent.lat,
+        dropoffLng: recent.lng,
+      }));
+      setDropoffQuery("");
+      setDropoffFocused(false);
+    }
+    addRecent({
+      placeId: recent.placeId,
+      displayName: recent.displayName,
+      lat: recent.lat,
+      lng: recent.lng,
+    });
+  }
+
+  const showPickupRecents =
+    pickupFocused &&
+    pickupQuery.length < 3 &&
+    recents.length > 0 &&
+    !(pickupGeocode.data && pickupGeocode.data.length > 0);
+  const showDropoffRecents =
+    dropoffFocused &&
+    dropoffQuery.length < 3 &&
+    recents.length > 0 &&
+    !(dropoffGeocode.data && dropoffGeocode.data.length > 0);
 
   const markers: MapMarker[] = [];
   if (form.pickupLat && form.pickupLng) {
@@ -286,6 +343,9 @@ export function TaskFormDrawer({
                     setForm({ ...form, pickupAddress: e.target.value });
                     setPickupQuery(e.target.value);
                   }}
+                  onFocus={() => setPickupFocused(true)}
+                  // Delay blur so click on a suggestion item still registers.
+                  onBlur={() => setTimeout(() => setPickupFocused(false), 150)}
                   placeholder={t("taskForm.addressPlaceholder")}
                   autoComplete="off"
                 />
@@ -296,10 +356,30 @@ export function TaskFormDrawer({
                         key={r.placeId}
                         type="button"
                         className="w-full text-left px-3 py-2 hover:bg-accent flex items-start gap-2"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectPickup(r)}
                       >
                         <MapPin className="h-3 w-3 mt-0.5 text-muted-foreground" />
                         <span>{r.displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showPickupRecents && (
+                  <div className="border border-border rounded-md max-h-40 overflow-y-auto bg-popover shadow-md text-xs">
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                      {t("taskForm.recentPlaces")}
+                    </div>
+                    {recents.map((r) => (
+                      <button
+                        key={r.placeId}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-accent flex items-start gap-2"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectRecent("pickup", r)}
+                      >
+                        <Clock className="h-3 w-3 mt-0.5 text-muted-foreground" />
+                        <span className="truncate">{r.displayName}</span>
                       </button>
                     ))}
                   </div>
@@ -324,6 +404,8 @@ export function TaskFormDrawer({
                     setForm({ ...form, dropoffAddress: e.target.value });
                     setDropoffQuery(e.target.value);
                   }}
+                  onFocus={() => setDropoffFocused(true)}
+                  onBlur={() => setTimeout(() => setDropoffFocused(false), 150)}
                   placeholder={t("taskForm.addressPlaceholder")}
                   autoComplete="off"
                 />
@@ -334,10 +416,30 @@ export function TaskFormDrawer({
                         key={r.placeId}
                         type="button"
                         className="w-full text-left px-3 py-2 hover:bg-accent flex items-start gap-2"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectDropoff(r)}
                       >
                         <MapPin className="h-3 w-3 mt-0.5 text-muted-foreground" />
                         <span>{r.displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showDropoffRecents && (
+                  <div className="border border-border rounded-md max-h-40 overflow-y-auto bg-popover shadow-md text-xs">
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                      {t("taskForm.recentPlaces")}
+                    </div>
+                    {recents.map((r) => (
+                      <button
+                        key={r.placeId}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-accent flex items-start gap-2"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectRecent("dropoff", r)}
+                      >
+                        <Clock className="h-3 w-3 mt-0.5 text-muted-foreground" />
+                        <span className="truncate">{r.displayName}</span>
                       </button>
                     ))}
                   </div>

@@ -191,6 +191,136 @@ def test_carpool_without_marginal_collapse_reproduces_original_drop() -> None:
     assert data["unassigned"][0]["taskId"] == "task-3"
 
 
+def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
+    """Reproduces the dispatcher report: when a 4th task whose pickup is a
+    few kilometres from a colocated cluster of 3 is added, the load-balancer
+    must not shove it onto a driver already busy on the other side of the
+    city. Distinct-cluster fairness counts the colocated trio as one stop,
+    so the cluster handler still has spare 'fairness budget' to absorb the
+    extra task.
+
+    Setup: D1 sits next to the cluster origin and is otherwise idle. D2 is
+    busy with two anchored tasks across town. The 4th task is a few km
+    from the cluster, time-overlapping. Expected: D1 takes all 4 cluster-
+    related tasks; D2 keeps its own pair.
+    """
+    cluster_pickup = (36.7200, 3.2500)   # Bab Ezzouar-ish
+    cluster_dropoff = (36.6900, 2.9300)  # Mahelma-ish
+    near_cluster_pickup = (36.7220, 3.2530)
+    near_cluster_dropoff = (36.6920, 2.9320)
+    east_pickup = (36.7370, 3.2200)      # D2's anchor pickup 1
+    east_dropoff = (36.7100, 2.9200)     # D2's anchor dropoff (Zeralda-ish)
+
+    payload = {
+        "jobId": "job-fairness",
+        "config": {
+            "maxSolveSeconds": 5,
+            "speedKmh": 50,
+            "returnToDepot": False,
+            "dropoffWithinSeconds": 7200,
+            "colocatedMarginalServiceSeconds": 60,
+            # Worst-case fairness lever: use the production default × 4 to
+            # prove the new behaviour holds even under aggressive balancing.
+            "loadBalancingDzdPerTask": 200,
+        },
+        "drivers": [
+            {
+                "id": "D1-cluster-side",
+                "shiftStartS": 28800,
+                "shiftEndS": 61200,
+                "depotLat": cluster_pickup[0],
+                "depotLng": cluster_pickup[1],
+                "capacityUnits": 4,
+            },
+            {
+                "id": "D2-busy-east",
+                "shiftStartS": 28800,
+                "shiftEndS": 61200,
+                "depotLat": east_pickup[0],
+                "depotLng": east_pickup[1],
+                "capacityUnits": 4,
+            },
+        ],
+        "tasks": [
+            # Three colocated cluster tasks (08:00 window).
+            *[
+                {
+                    "id": f"cluster-{i}",
+                    "priority": "normal",
+                    "pickupLat": cluster_pickup[0],
+                    "pickupLng": cluster_pickup[1],
+                    "pickupWindowStartS": 28800,
+                    "pickupWindowEndS": 30600,
+                    "pickupServiceS": 1200,
+                    "dropoffLat": cluster_dropoff[0],
+                    "dropoffLng": cluster_dropoff[1],
+                    "capacityUnits": 1,
+                }
+                for i in range(1, 4)
+            ],
+            # Near-but-not-colocated 4th task, same time window.
+            {
+                "id": "cluster-near",
+                "priority": "normal",
+                "pickupLat": near_cluster_pickup[0],
+                "pickupLng": near_cluster_pickup[1],
+                "pickupWindowStartS": 28800,
+                "pickupWindowEndS": 30600,
+                "pickupServiceS": 1200,
+                "dropoffLat": near_cluster_dropoff[0],
+                "dropoffLng": near_cluster_dropoff[1],
+                "capacityUnits": 1,
+            },
+            # D2 anchors: pickup near D2's depot, dropoff west — forces D2
+            # across the city and far away from the cluster.
+            {
+                "id": "anchor-1",
+                "priority": "normal",
+                "pickupLat": east_pickup[0],
+                "pickupLng": east_pickup[1],
+                "pickupWindowStartS": 28800,
+                "pickupWindowEndS": 30600,
+                "pickupServiceS": 600,
+                "dropoffLat": east_dropoff[0],
+                "dropoffLng": east_dropoff[1],
+                "capacityUnits": 1,
+            },
+            {
+                "id": "anchor-2",
+                "priority": "normal",
+                "pickupLat": east_pickup[0],
+                "pickupLng": east_pickup[1],
+                "pickupWindowStartS": 28800,
+                "pickupWindowEndS": 30600,
+                "pickupServiceS": 600,
+                "dropoffLat": east_dropoff[0],
+                "dropoffLng": east_dropoff[1],
+                "capacityUnits": 1,
+            },
+        ],
+    }
+
+    response = client.post("/optimize", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["unassigned"] == [], f"Unexpected unassigned: {data['unassigned']}"
+
+    routes_by_driver = {r["driverId"]: r for r in data["routes"]}
+    d1_task_ids = {
+        s["taskId"] for s in routes_by_driver["D1-cluster-side"]["stops"]
+        if s["type"] == "pickup"
+    }
+    d2_task_ids = {
+        s["taskId"] for s in routes_by_driver["D2-busy-east"]["stops"]
+        if s["type"] == "pickup"
+    }
+    cluster_ids = {"cluster-1", "cluster-2", "cluster-3", "cluster-near"}
+    assert cluster_ids.issubset(d1_task_ids), (
+        f"Expected all cluster + near tasks on D1, got D1={d1_task_ids}, D2={d2_task_ids}"
+    )
+    assert cluster_ids.isdisjoint(d2_task_ids)
+
+
 def test_normal_penalty_below_arc_cost_drops_task() -> None:
     """If the normal-task penalty is set below the marginal fuel cost of
     the detour, the optimizer should leave the task unassigned."""

@@ -42,6 +42,9 @@ export const authLogout = () => post<void>("/auth/logout");
 export const authRefresh = (refreshToken: string) =>
   post<{ token: string; refreshToken: string }>("/auth/refresh", { refreshToken });
 
+export const authChangePassword = (currentPassword: string, newPassword: string) =>
+  post<{ message: string }>("/auth/change-password", { currentPassword, newPassword });
+
 /* ── admin ── */
 
 export const getAdminHealth = () => get<AdminHealth>("/admin/health");
