@@ -50,7 +50,7 @@ export function useCreateAdminUser() {
       name?: string;
       phone?: string;
       password: string;
-      role: "ADMIN" | "DISPATCHER";
+      role: "ADMIN" | "DISPATCHER" | "CADRE";
     }) => createAdminUser(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });

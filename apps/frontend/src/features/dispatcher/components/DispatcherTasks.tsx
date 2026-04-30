@@ -34,14 +34,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertTriangle,
   Plus,
   Search,
   ArrowDown,
   ArrowUp,
   Check,
+  CheckCircle2,
   LayoutList,
   Loader2,
   Map as MapIcon,
+  RefreshCw,
   Sparkles,
   Trash2,
   Pencil,
@@ -59,9 +62,11 @@ import {
   useDrivers,
   useJobStatus,
   useRejectTask,
+  useRunMidDayReoptimization,
   useTasks,
   useTriggerOptimize,
 } from "@/features/shared/hooks";
+import type { MidDayResult } from "@/lib/api-services";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import type { Task } from "@/types/api";
@@ -112,6 +117,7 @@ export default function DispatcherTasks() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [view, setView] = useState<"table" | "map">("table");
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -119,20 +125,33 @@ export default function DispatcherTasks() {
   const [optimizeDialogOpen, setOptimizeDialogOpen] = useState(false);
   const [optimizeDate, setOptimizeDate] = useState(todayStr());
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // Drives the staged "Loading → Analyzing → Computing → Finalizing"
+  // animation while the optimizer runs. The backend only emits coarse
+  // progress (often stuck at 10%), so this is a UX overlay — we still
+  // snap the bar forward if the real progressPercent ever exceeds it.
+  const [optimizeElapsedMs, setOptimizeElapsedMs] = useState(0);
 
   const { data, isLoading, isError, error, refetch } = useTasks({
     page,
     limit: 50,
     status: statusFilter !== "all" ? statusFilter : undefined,
     priority: priorityFilter !== "all" ? priorityFilter : undefined,
+    dateFrom: dateFilter || undefined,
+    dateTo: dateFilter || undefined,
   });
 
   const deleteTask = useDeleteTask();
   const approveTask = useApproveTask();
   const rejectTask = useRejectTask();
+  const runMidDay = useRunMidDayReoptimization();
   const driversQuery = useDrivers();
   const triggerOptimize = useTriggerOptimize();
   const jobStatusQuery = useJobStatus(activeJobId);
+
+  // Smart prompt after approval: if a published plan exists for the approved
+  // task's date, show a preview of how it would be inserted via mid-day
+  // re-optimization. Dispatcher can apply or dismiss without leaving the page.
+  const [reoptPreview, setReoptPreview] = useState<MidDayResult | null>(null);
 
   const activeDrivers = (driversQuery.data ?? []).filter((d) => d.active);
 
@@ -145,7 +164,7 @@ export default function DispatcherTasks() {
       toast({ title: t("dispatcher.tasks.planGenerated"), description: t("dispatcher.tasks.optimizationComplete") });
       setActiveJobId(null);
       setOptimizeDialogOpen(false);
-      router.push("/dispatcher/planning");
+      router.push(`/dispatcher/planning?date=${optimizeDate}`);
     } else if (status === "failed") {
       toast({
         title: t("dispatcher.tasks.optimizationFailed"),
@@ -155,6 +174,21 @@ export default function DispatcherTasks() {
       setActiveJobId(null);
     }
   }, [jobStatusQuery.data, router, toast, t]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Tick a synthetic elapsed timer while the optimizer job is active so the
+  // staged loader (Loading → Analyzing → …) advances even when the backend
+  // hasn't sent a new progress update.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!activeJobId) {
+      setOptimizeElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setOptimizeElapsedMs(Date.now() - start), 250);
+    return () => clearInterval(id);
+  }, [activeJobId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleConfirmOptimize() {
@@ -204,6 +238,42 @@ export default function DispatcherTasks() {
     } catch (err) {
       toast({
         title: "Approve failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Smart prompt: if a published plan exists for this task's date, the
+    // mid-day re-optimizer will surface where the new task could slot in.
+    // No published plan → empty assignments → dialog stays closed.
+    try {
+      const taskDate = task.pickupWindowStart.slice(0, 10);
+      const preview = await runMidDay.mutateAsync({ date: taskDate, dryRun: true });
+      if (preview.assignments.length > 0) {
+        setReoptPreview(preview);
+      }
+    } catch {
+      // Preview is best-effort. If it errors, just stay silent — the task is
+      // already approved and will be picked up by the next run.
+    }
+  }
+
+  async function handleApplyReopt() {
+    if (!reoptPreview) return;
+    try {
+      const applied = await runMidDay.mutateAsync({
+        date: reoptPreview.date,
+        dryRun: false,
+      });
+      setReoptPreview(null);
+      toast({
+        title: "Plan updated",
+        description: `${applied.assignedCount} task(s) inserted.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Could not update plan",
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
@@ -365,7 +435,17 @@ export default function DispatcherTasks() {
               <TableBody>
                 {pendingApproval.map((task) => (
                   <TableRow key={task.id}>
-                    <TableCell className="text-sm">{task.title || "—"}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{task.title || "—"}</div>
+                      {task.createdBy ? (
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {t("dispatcher.tasks.submittedBy")}{" "}
+                          <span className="font-medium text-foreground">
+                            {task.createdBy.name || task.createdBy.email}
+                          </span>
+                        </div>
+                      ) : null}
+                    </TableCell>
                     <TableCell>
                       <div className="space-y-0.5 text-xs">
                         <div className="flex items-center gap-1">
@@ -441,7 +521,7 @@ export default function DispatcherTasks() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("common.all")} {t("common.status")}</SelectItem>
+                  <SelectItem value="all">{t("dispatcher.tasks.allStatuses")}</SelectItem>
                   {["pending", "assigned", "cancelled"].map((s) => (
                     <SelectItem key={s} value={s} className="capitalize">
                       {t(`status.${s}`)}
@@ -449,12 +529,32 @@ export default function DispatcherTasks() {
                   ))}
                 </SelectContent>
               </Select>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
+                  className="h-9 w-40"
+                  title={t("dispatcher.tasks.filterByDate")}
+                />
+                {dateFilter && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0"
+                    onClick={() => { setDateFilter(""); setPage(1); }}
+                    title={t("common.clear")}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
               <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setPage(1); }}>
                 <SelectTrigger className="w-32 h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("common.all")} {t("common.priority")}</SelectItem>
+                  <SelectItem value="all">{t("dispatcher.tasks.allPriorities")}</SelectItem>
                   {["urgent", "normal"].map((p) => (
                     <SelectItem key={p} value={p} className="capitalize">
                       {t(`priority.${p}`)}
@@ -617,15 +717,53 @@ export default function DispatcherTasks() {
           </DialogHeader>
 
           {activeJobId && jobStatusQuery.data ? (
-            <div className="space-y-3 py-2">
-              <div className="text-sm">
-                {t("dispatcher.tasks.optimizing")} ({jobStatusQuery.data.status})
-              </div>
-              <Progress value={jobStatusQuery.data.progressPercent} className="h-2" />
-              <div className="text-xs text-muted-foreground text-center">
-                {jobStatusQuery.data.progressPercent}%
-              </div>
-            </div>
+            (() => {
+              const isCompleted = jobStatusQuery.data.status === "completed";
+              // Staged client-side timeline. Each stage has a soft duration
+              // and a target percent; we interpolate within the stage so the
+              // bar moves smoothly instead of stair-stepping.
+              const stages: Array<{ key: string; until: number; pct: number }> = [
+                { key: "dispatcher.tasks.optimizerStage.loading",     until:  2000, pct: 18 },
+                { key: "dispatcher.tasks.optimizerStage.analyzing",   until:  6000, pct: 42 },
+                { key: "dispatcher.tasks.optimizerStage.computing",   until: 14000, pct: 70 },
+                { key: "dispatcher.tasks.optimizerStage.optimizing",  until: 25000, pct: 88 },
+                { key: "dispatcher.tasks.optimizerStage.finalizing",  until: Infinity, pct: 95 },
+              ];
+              let stageKey = stages[stages.length - 1].key;
+              let timed = 95;
+              let prevUntil = 0;
+              let prevPct = 5;
+              for (const s of stages) {
+                if (optimizeElapsedMs < s.until) {
+                  const span = s.until - prevUntil;
+                  const into = optimizeElapsedMs - prevUntil;
+                  timed = Math.round(prevPct + (s.pct - prevPct) * Math.min(1, into / span));
+                  stageKey = s.key;
+                  break;
+                }
+                prevUntil = s.until;
+                prevPct = s.pct;
+              }
+              const backendPct = jobStatusQuery.data.progressPercent ?? 0;
+              const pct = isCompleted ? 100 : Math.max(timed, backendPct);
+              const label = isCompleted
+                ? t("dispatcher.tasks.optimizerStage.done")
+                : t(stageKey);
+              return (
+                <div className="space-y-3 py-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    )}
+                    <span>{label}</span>
+                  </div>
+                  <Progress value={pct} className="h-2" />
+                  <div className="text-xs text-muted-foreground text-center">{pct}%</div>
+                </div>
+              );
+            })()
           ) : (
             <div className="space-y-3 py-1">
               <div className="space-y-1">
@@ -675,6 +813,89 @@ export default function DispatcherTasks() {
                 <Sparkles className="w-4 h-4 me-2" />
               )}
               {activeJobId ? t("dispatcher.tasks.optimizing") : t("dispatcher.tasks.queueOptimization")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Smart prompt: mid-day re-optimization preview shown right after a
+          Cadre task is approved if a published plan exists for that date. */}
+      <Dialog
+        open={!!reoptPreview}
+        onOpenChange={(o) => {
+          if (!o && !runMidDay.isPending) setReoptPreview(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-amber-700" />
+              Insert into today&apos;s plan?
+            </DialogTitle>
+          </DialogHeader>
+
+          {reoptPreview && (
+            <div className="space-y-3 py-1">
+              <p className="text-xs text-muted-foreground">
+                A published plan already exists for{" "}
+                <span className="font-medium text-foreground">
+                  {reoptPreview.date}
+                </span>
+                . The newly approved task can be slotted in now. Review and
+                apply, or dismiss to leave today&apos;s plan untouched.
+              </p>
+
+              <div className="rounded-md border border-border bg-background p-2.5">
+                <ul className="space-y-1 max-h-60 overflow-y-auto">
+                  {reoptPreview.assignments.map((a) => (
+                    <li
+                      key={a.taskId}
+                      className="text-[11px] flex items-center gap-2 min-w-0"
+                    >
+                      <CheckCircle2 className="h-3 w-3 text-tms-success flex-shrink-0" />
+                      <span className="font-medium text-foreground truncate">
+                        {a.taskTitle}
+                      </span>
+                      <span className="text-muted-foreground flex-shrink-0">→</span>
+                      <span className="text-foreground truncate">{a.driverName}</span>
+                      <span className="ms-auto text-[9px] font-mono text-muted-foreground flex-shrink-0">
+                        #{a.pickupSequence}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {reoptPreview.unassigned.length > 0 && (
+                <div className="rounded-md border border-tms-warning/30 bg-background p-2.5">
+                  <p className="text-[11px] text-tms-warning-dark flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                    {reoptPreview.unassigned.length} couldn&apos;t fit.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setReoptPreview(null)}
+              disabled={runMidDay.isPending}
+            >
+              Dismiss
+            </Button>
+            <Button
+              onClick={handleApplyReopt}
+              disabled={runMidDay.isPending}
+              className="bg-tms-success hover:bg-tms-success-dark"
+            >
+              {runMidDay.isPending ? (
+                <Loader2 className="w-4 h-4 me-2 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 me-2" />
+              )}
+              Approve &amp; apply
             </Button>
           </DialogFooter>
         </DialogContent>

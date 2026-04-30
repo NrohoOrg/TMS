@@ -40,6 +40,7 @@ import {
   useDrivers,
   useUpdateDriver,
 } from "@/features/shared/hooks";
+import { MINISTRY_DEPOT } from "@/lib/depot";
 import type { Driver } from "@/types/api";
 
 interface DriverForm {
@@ -47,8 +48,6 @@ interface DriverForm {
   phone: string;
   shiftStart: string;
   shiftEnd: string;
-  depotLat: number;
-  depotLng: number;
   capacityUnits: number | null;
   active: boolean;
 }
@@ -58,8 +57,6 @@ const EMPTY: DriverForm = {
   phone: "",
   shiftStart: "08:00",
   shiftEnd: "17:00",
-  depotLat: 0,
-  depotLng: 0,
   capacityUnits: null,
   active: true,
 };
@@ -99,8 +96,6 @@ export default function AdminDrivers() {
       phone: d.phone,
       shiftStart: d.shiftStart,
       shiftEnd: d.shiftEnd,
-      depotLat: d.depotLat,
-      depotLng: d.depotLng,
       capacityUnits: d.capacityUnits,
       active: d.active,
     });
@@ -116,12 +111,19 @@ export default function AdminDrivers() {
       });
       return;
     }
+    // The depot is fixed for the whole fleet — every driver starts and ends
+    // each day at the Ministère des Startups. Form does not ask for it.
+    const payload = {
+      ...form,
+      depotLat: MINISTRY_DEPOT.lat,
+      depotLng: MINISTRY_DEPOT.lng,
+    };
     try {
       if (editing) {
-        await updateMut.mutateAsync({ id: editing.id, data: form });
+        await updateMut.mutateAsync({ id: editing.id, data: payload });
         toast({ title: tFn("admin.drivers.driverUpdated") });
       } else {
-        await createMut.mutateAsync(form);
+        await createMut.mutateAsync(payload);
         toast({ title: tFn("admin.drivers.driverCreated") });
       }
       setOpen(false);
@@ -284,25 +286,8 @@ export default function AdminDrivers() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>{tFn("admin.drivers.depotLat")}</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={form.depotLat}
-                  onChange={(e) => setForm({ ...form, depotLat: Number(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>{tFn("admin.drivers.depotLng")}</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={form.depotLng}
-                  onChange={(e) => setForm({ ...form, depotLng: Number(e.target.value) })}
-                />
-              </div>
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+              {tFn("admin.drivers.depotFixed", { name: MINISTRY_DEPOT.name })}
             </div>
             <div className="space-y-1">
               <Label>{tFn("admin.drivers.capacityUnits")}</Label>

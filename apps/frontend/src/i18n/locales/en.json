@@ -32,6 +32,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "clear": "Clear",
     "delete": "Delete",
     "edit": "Edit",
     "add": "Add",
@@ -144,11 +145,14 @@
     "signingIn": "Signing in…",
     "signedIn": "Signed in — redirecting…",
     "invalidCredentials": "Invalid email or password",
+    "networkError": "Could not reach the server. Check your connection and try again.",
+    "tooManyAttempts": "Too many attempts. Please wait a minute and try again.",
+    "serverError": "Server error. Please try again in a moment.",
     "loginFailed": "Login failed",
     "emailPlaceholder": "name@company.dz",
     "passwordPlaceholder": "••••••••",
     "quickAccess": "Quick Access (Demo)",
-    "brandTitle": "Transport Management System",
+    "brandTitle": "Task Management System",
     "brandSubtitle": "Smart route planning and fleet management. Plan, dispatch, and track your deliveries in real time.",
     "copyright": "© 2026 TMS — All rights reserved"
   },
@@ -200,8 +204,11 @@
       "taskDeleted": "Task deleted",
       "confirmDelete": "Delete this task?",
       "filtersAll": "All",
+      "allStatuses": "All statuses",
+      "allPriorities": "All priorities",
       "filterByStatus": "Filter by status",
       "filterByPriority": "Filter by priority",
+      "filterByDate": "Filter by date",
       "searchPlaceholder": "Search tasks…",
       "totalSummary": "{{total}} tasks total • {{pending}} pending",
       "pendingShort": "pending",
@@ -215,8 +222,17 @@
       "optimizationFailedToStart": "Could not start planning",
       "runOptimizationFor": "Plan routes for",
       "queueOptimization": "Plan routes",
+      "submittedBy": "Submitted by",
       "optimizationDate": "Date to plan",
       "optimizationDescription": "Automatically assigns these tasks to your drivers. The result appears in the Planning workspace.",
+      "optimizerStage": {
+        "loading": "Loading tasks and drivers…",
+        "analyzing": "Analyzing constraints…",
+        "computing": "Computing routes…",
+        "optimizing": "Optimizing assignments…",
+        "finalizing": "Finalizing plan…",
+        "done": "Plan ready — opening Planning…"
+      },
       "tableTitle": "Title",
       "tablePickup": "Pickup",
       "tableDropoff": "Drop-off",
@@ -260,6 +276,8 @@
       "runOptimizer": "Plan Routes",
       "recalculate": "Recalculate",
       "publish": "Publish",
+      "publishedReadOnlyTitle": "Plan is already published",
+      "publishedReadOnlyHint": "This plan is published and read-only. To change it, create a new draft or unpublish it first.",
       "publishing": "Publishing…",
       "published": "Published",
       "unpublish": "Unpublish",
@@ -277,6 +295,10 @@
       "publishFailed": "Publish failed",
       "recalculateFailed": "Recalculate failed",
       "recalculated": "Plan recalculated",
+      "cancelPlan": "Cancel",
+      "cancelConfirm": "Cancel this draft plan? All assigned tasks will go back to pending and you can re-run the optimizer.",
+      "cancelled": "Plan cancelled — tasks reverted to pending",
+      "cancelFailed": "Could not cancel plan",
       "plansForDate": "Plans for this date",
       "noPlansForDate": "No plans for this date",
       "routes": "Routes",
@@ -309,10 +331,7 @@
       "unlock": "Unlock",
       "addEmptyPlan": "Add empty plan",
       "noPlansHint": "Pick a date with plans or create a new draft.",
-      "selectOrCreate": "Select or create a plan to start.",
-      "stops": "stops",
-      "tasks": "tasks",
-      "drivers": "drivers"
+      "selectOrCreate": "Select or create a plan to start."
     },
     "operations": {
       "title": "Operations",
@@ -361,9 +380,7 @@
       "markDriverUnavailableHint": "Pick a driver and a time. We'll preview which assigned tasks are released, then reassign them to other drivers.",
       "selectDriver": "Select driver",
       "fromTime": "From",
-      "until": "Until",
-      "endOfDay": "End of day",
-      "atTime": "At time",
+      "offRestOfDayHint": "The driver is marked unavailable for the rest of the day.",
       "previewImpact": "Preview impact",
       "confirmRelease": "Confirm & release",
       "previewing": "Previewing…",
@@ -530,6 +547,7 @@
       "shiftEnd": "Shift end",
       "depotLat": "Depot latitude",
       "depotLng": "Depot longitude",
+      "depotFixed": "Every driver starts and ends the day at {{name}}.",
       "capacityUnits": "Capacity units",
       "active": "Active"
     },
@@ -697,6 +715,35 @@
       "errorMismatch": "New password and confirmation do not match.",
       "errorSame": "New password must be different from the current one.",
       "errorCurrentInvalid": "Current password is incorrect."
+    }
+  },
+  "cadre": {
+    "title": "My Tasks",
+    "subtitle": "{{count}} task(s) submitted",
+    "addTask": "Add Task",
+    "intro": "Tasks you submit are sent to the dispatcher for approval. Once approved you can no longer edit or delete them.",
+    "loadFailed": "Failed to load tasks",
+    "taskDeleted": "Task deleted",
+    "confirmDelete": "Delete \"{{title}}\"?",
+    "cannotDeleteApproved": "Approved tasks cannot be deleted",
+    "cannotEditApproved": "Approved tasks cannot be edited",
+    "assignedTo": "Assigned to {{name}}",
+    "startedBy": "Started — {{name}}",
+    "empty": {
+      "title": "No tasks yet",
+      "description": "Add your first task — it will be sent to the dispatcher for approval."
+    },
+    "table": {
+      "title": "Title",
+      "pickupDropoff": "Pickup / Dropoff"
+    },
+    "status": {
+      "created": "Created",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "assigned": "Assigned",
+      "started": "Started",
+      "completed": "Completed"
     }
   }
 }

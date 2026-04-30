@@ -491,15 +491,20 @@ export function TaskFormDrawer({
             </div>
 
             <div className="space-y-2">
-              <Label>{t("common.time")}</Label>
+              <Label htmlFor="task-pickup-time">{t("common.time")}</Label>
               <Input
+                id="task-pickup-time"
                 type="time"
                 value={form.pickupTime}
                 onChange={(e) => setForm({ ...form, pickupTime: e.target.value })}
+                className="cursor-pointer"
               />
-              <p className="text-[11px] text-muted-foreground">
+              <Label
+                htmlFor="task-pickup-time"
+                className="text-[11px] font-normal text-muted-foreground cursor-pointer"
+              >
                 {t("taskForm.pickupWindow")}
-              </p>
+              </Label>
             </div>
           </div>
         </SheetBody>

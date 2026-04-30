@@ -57,7 +57,7 @@ export const createAdminUser = (data: {
   name?: string;
   phone?: string;
   password: string;
-  role: "ADMIN" | "DISPATCHER";
+  role: "ADMIN" | "DISPATCHER" | "CADRE";
 }) => post<AdminUser>("/admin/users", data);
 export const patchAdminUser = (id: string, data: Partial<AdminUser>) =>
   patch<AdminUser>(`/admin/users/${id}`, data);
@@ -81,6 +81,8 @@ export interface TaskListParams {
   limit?: number;
   status?: string;
   priority?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export const getTasks = (params?: TaskListParams) =>

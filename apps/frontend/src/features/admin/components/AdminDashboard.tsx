@@ -13,7 +13,6 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardList,
-  Map as MapIcon,
   Route as RouteIcon,
   Users,
 } from "lucide-react";
@@ -56,14 +55,9 @@ export default function AdminDashboard() {
         title={`${user?.name ? `${user.name.split(" ")[0]} — ` : ""}${tFn("admin.dashboard.title")}`}
         subtitle={tFn("admin.dashboard.subtitle")}
         actions={
-          <>
-            <Button size="sm" variant="outline" onClick={() => router.push("/admin/map")}>
-              <MapIcon className="w-4 h-4 me-1" /> {tFn("admin.dashboard.liveMap")}
-            </Button>
-            <Button size="sm" onClick={() => router.push("/admin/health")}>
-              <Activity className="w-4 h-4 me-1" /> {tFn("admin.dashboard.health")}
-            </Button>
-          </>
+          <Button size="sm" onClick={() => router.push("/admin/health")}>
+            <Activity className="w-4 h-4 me-1" /> {tFn("admin.dashboard.health")}
+          </Button>
         }
       />
 

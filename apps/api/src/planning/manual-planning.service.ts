@@ -291,7 +291,7 @@ export class ManualPlanningService {
 
     await this.prisma.$transaction(async (tx) => {
       // shift sequences from insertAt onward by +2
-      await tx.$executeRaw`UPDATE stops SET sequence = sequence + 2 WHERE "routeId" = ${routeId} AND sequence >= ${insertAt}`;
+      await tx.$executeRaw`UPDATE "Stop" SET sequence = sequence + 2 WHERE "routeId" = ${routeId} AND sequence >= ${insertAt}`;
 
       await tx.stop.create({
         data: {
@@ -499,7 +499,7 @@ export class ManualPlanningService {
       const insertAt = Math.min(Math.max(0, dto.targetSequence), fresh.length);
 
       // 4. Shift target sequences from insertAt onward by +2
-      await tx.$executeRaw`UPDATE stops SET sequence = sequence + 2 WHERE "routeId" = ${targetRouteId} AND sequence >= ${insertAt}`;
+      await tx.$executeRaw`UPDATE "Stop" SET sequence = sequence + 2 WHERE "routeId" = ${targetRouteId} AND sequence >= ${insertAt}`;
 
       // 5. Insert pickup then dropoff
       await tx.stop.create({

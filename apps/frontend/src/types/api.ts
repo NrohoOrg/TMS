@@ -71,6 +71,7 @@ export interface Task {
   updatedAt: string;
   approvalStatus?: TaskApprovalStatus;
   createdById?: string | null;
+  createdBy?: { id: string; name: string | null; email: string } | null;
 }
 
 export interface CadreTaskView extends Task {
