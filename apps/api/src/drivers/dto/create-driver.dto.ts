@@ -45,4 +45,14 @@ export class CreateDriverDto {
   @IsInt()
   @Min(1)
   capacityUnits?: number;
+
+  @ApiPropertyOptional({ example: 'Renault Kangoo' })
+  @IsOptional()
+  @IsString()
+  vehicleName?: string;
+
+  @ApiPropertyOptional({ example: '00123-456-16' })
+  @IsOptional()
+  @IsString()
+  vehiclePlate?: string;
 }

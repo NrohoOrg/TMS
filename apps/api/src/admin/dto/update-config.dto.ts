@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsNumber, IsObject, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsObject, IsOptional, Min } from 'class-validator';
 
 export class UpdateConfigDto {
   @ApiPropertyOptional({ example: 30, minimum: 1 })
@@ -25,4 +25,9 @@ export class UpdateConfigDto {
   @IsOptional()
   @IsObject()
   objectiveWeights?: Record<string, number>;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  smsEnabled?: boolean;
 }

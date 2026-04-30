@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/ui/page-header";
-import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, MessageSquare } from "lucide-react";
 import { authChangePassword } from "@/lib/api-services";
+import { useAdminConfig, useUpdateAdminConfig } from "@/features/shared/hooks";
+import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 
@@ -16,6 +19,8 @@ const MIN_PASSWORD_LENGTH = 8;
 export default function SettingsPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -80,6 +85,12 @@ export default function SettingsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
+
+      {isAdmin && (
+        <div className="max-w-xl">
+          <SmsToggleCard />
+        </div>
+      )}
 
       <div className="max-w-xl">
         <Card>
@@ -156,6 +167,62 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function SmsToggleCard() {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const configQuery = useAdminConfig();
+  const updateConfig = useUpdateAdminConfig();
+
+  const enabled = configQuery.data?.smsEnabled ?? true;
+
+  async function handleToggle(next: boolean) {
+    try {
+      await updateConfig.mutateAsync({ smsEnabled: next });
+      toast({
+        title: next
+          ? t("settings.sms.enabledToast")
+          : t("settings.sms.disabledToast"),
+      });
+    } catch (err) {
+      toast({
+        title: t("common.updateFailed"),
+        description: err instanceof Error ? err.message : t("common.unknownError"),
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-display flex items-center gap-2">
+          <MessageSquare className="w-4 h-4" />
+          {t("settings.sms.title")}
+        </CardTitle>
+        <CardDescription>{t("settings.sms.subtitle")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <Label htmlFor="smsEnabled" className="text-sm">
+              {t("settings.sms.toggleLabel")}
+            </Label>
+            <p className="text-[11px] text-muted-foreground">
+              {enabled ? t("settings.sms.statusOn") : t("settings.sms.statusOff")}
+            </p>
+          </div>
+          <Switch
+            id="smsEnabled"
+            checked={enabled}
+            disabled={configQuery.isLoading || updateConfig.isPending}
+            onCheckedChange={handleToggle}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -60,6 +60,18 @@ export class SmsService {
     const configuredType = this.configService.get<string>('ICOSNET_SMS_TYPE') ?? '0';
     const dlr = this.configService.get<string>('ICOSNET_SMS_DLR') ?? '1';
 
+    // Master kill-switch (admin-tunable). Off during demos/tests so we don't
+    // burn provider credits. Returns a no-op success=false without touching
+    // the provider or recording an SmsLog row.
+    const cfg = await this.prisma.config.findUnique({
+      where: { id: 1 },
+      select: { smsEnabled: true },
+    });
+    if (cfg && cfg.smsEnabled === false) {
+      this.logger.log(`SMS disabled in config — skipping send to ${destination}`);
+      return { success: false, code: null, messageId: null, providerResponse: 'sms_disabled' };
+    }
+
     if (!baseUrl || !username || !password) {
       this.logger.warn('SMS provider credentials missing — skipping send');
       return { success: false, code: null, messageId: null, providerResponse: 'missing_credentials' };
