@@ -17,6 +17,7 @@ import {
   Map as MapIcon,
   AlertTriangle,
   PlusCircle,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,12 @@ interface NavItem {
   icon: React.ElementType;
 }
 
+const SETTINGS_NAV_ITEM: NavItem = {
+  labelKey: "nav.settings",
+  path: "/settings",
+  icon: SettingsIcon,
+};
+
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   admin: [
     { labelKey: "nav.dashboard", path: "/admin", icon: LayoutDashboard },
@@ -41,6 +48,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { labelKey: "nav.users", path: "/admin/users", icon: Users },
     { labelKey: "nav.drivers", path: "/admin/drivers", icon: UserCheck },
     { labelKey: "nav.systemHealth", path: "/admin/health", icon: Activity },
+    SETTINGS_NAV_ITEM,
   ],
   dispatcher: [
     { labelKey: "nav.tasks", path: "/dispatcher/tasks", icon: ClipboardList },
@@ -48,11 +56,16 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { labelKey: "nav.planning", path: "/dispatcher/planning", icon: RouteIcon },
     { labelKey: "nav.operations", path: "/dispatcher/operations", icon: MapIcon },
     { labelKey: "nav.incidents", path: "/dispatcher/incidents", icon: AlertTriangle },
+    SETTINGS_NAV_ITEM,
   ],
-  driver: [{ labelKey: "nav.myRoute", path: "/driver", icon: MapPin }],
+  driver: [
+    { labelKey: "nav.myRoute", path: "/driver", icon: MapPin },
+    SETTINGS_NAV_ITEM,
+  ],
   cadre: [
     { labelKey: "nav.addTask", path: "/cadre/new", icon: PlusCircle },
     { labelKey: "nav.myTasks", path: "/cadre/tasks", icon: ListChecks },
+    SETTINGS_NAV_ITEM,
   ],
 };
 

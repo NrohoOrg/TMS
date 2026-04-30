@@ -18,6 +18,7 @@
     "myRoute": "My Route",
     "addTask": "Add Task",
     "myTasks": "My Tasks",
+    "settings": "Settings",
     "signOut": "Sign Out",
     "workspace": "Workspace"
   },
@@ -668,6 +669,7 @@
     "lockedPriority": "Priority is locked",
     "geocoding": "Geocoding…",
     "geocodeFailed": "Geocoding failed",
+    "recentPlaces": "Recent",
     "selectOnMap": "Pick on map",
     "useGeocode": "Use geocoded location",
     "missingTitle": "Title is required",
@@ -678,5 +680,23 @@
     "coordsResolveFailed": "Could not resolve coordinates. Try another suggestion.",
     "pickupWindowHelper": "Pickup window auto-extends 30 minutes from the start time.",
     "saveChanges": "Save changes"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account preferences.",
+    "password": {
+      "title": "Change password",
+      "subtitle": "Update the password you use to sign in.",
+      "current": "Current password",
+      "new": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Update password",
+      "hint": "Use at least {{min}} characters.",
+      "success": "Password updated successfully.",
+      "errorTooShort": "New password must be at least {{min}} characters.",
+      "errorMismatch": "New password and confirmation do not match.",
+      "errorSame": "New password must be different from the current one.",
+      "errorCurrentInvalid": "Current password is incorrect."
+    }
   }
 }

@@ -316,25 +316,35 @@ def optimize(body: OptimizeRequest):
                 <= time_dim.CumulVar(pickup_index) + dropoff_within_seconds
             )
 
-        # Fairness lever: track tasks-per-vehicle and penalise the gap between
-        # the busiest and least-busy driver. Each pickup node contributes 1;
-        # SetGlobalSpanCostCoefficient adds K × (max - min) to the objective.
-        # K is in the same micro-DZD unit as the arc cost, so a value of e.g.
-        # 45 DZD/task = 45_000_000 μDZD makes the planner accept up to 45 DZD
-        # of detour to flatten the workload by one task.
+        # Fairness lever: penalise the gap between the busiest and least-busy
+        # driver via SetGlobalSpanCostCoefficient (K × (max - min)). The
+        # increment is "distinct pickup-cluster transitions": leaving a
+        # pickup node counts 1 only if the next stop is at a different
+        # coordinate. Same-coord pickup→pickup transitions stay inside the
+        # carpool cluster and contribute 0, mirroring the marginal-service
+        # collapse in time_callback. This way three colocated pickups count
+        # as one stop for fairness purposes, so a near-but-not-colocated
+        # additional task naturally lands on the driver already handling
+        # the cluster instead of being shoved onto a busier driver to
+        # equalise raw task counts.
         if num_tasks > 0 and body.config.loadBalancingDzdPerTask > 0:
-            task_count_demands = [0] * total_nodes
-            for task_index in range(num_tasks):
-                task_count_demands[pickup_nodes[task_index]] = 1
+            def task_count_transit(from_index: int, to_index: int) -> int:
+                from_node = manager.IndexToNode(from_index)
+                if node_kinds[from_node] != "pickup":
+                    return 0
+                to_node = manager.IndexToNode(to_index)
+                if (
+                    node_kinds[to_node] == "pickup"
+                    and node_coords[from_node] == node_coords[to_node]
+                ):
+                    return 0
+                return 1
 
-            def task_count_callback(index: int) -> int:
-                return task_count_demands[manager.IndexToNode(index)]
-
-            task_count_idx = routing.RegisterUnaryTransitCallback(task_count_callback)
-            routing.AddDimensionWithVehicleCapacity(
+            task_count_idx = routing.RegisterTransitCallback(task_count_transit)
+            routing.AddDimension(
                 task_count_idx,
                 0,
-                [num_tasks] * num_drivers,
+                num_tasks,
                 True,
                 "TaskCount",
             )

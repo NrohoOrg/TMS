@@ -5,6 +5,7 @@ export * from "./useMonitor";
 export * from "./useReports";
 export * from "./useAvailability";
 export * from "./useGeocode";
+export * from "./useRecentPlaces";
 export * from "./useAdmin";
 export * from "./useManualPlanning";
 export * from "./useIncidents";
