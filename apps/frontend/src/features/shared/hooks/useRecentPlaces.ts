@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 export interface RecentPlace {
   placeId: string;
@@ -46,11 +46,11 @@ function writeStorage(value: RecentPlace[]): void {
 }
 
 export function useRecentPlaces() {
-  const [recents, setRecents] = useState<RecentPlace[]>([]);
-
-  useEffect(() => {
-    setRecents(readStorage());
-  }, []);
+  // Lazy initializer reads from localStorage during initial render instead of
+  // calling setState inside an effect (which would trigger a cascading re-render
+  // and is flagged by react-hooks/set-state-in-effect). readStorage() is SSR-safe
+  // because it short-circuits when window is undefined.
+  const [recents, setRecents] = useState<RecentPlace[]>(() => readStorage());
 
   const addRecent = useCallback((place: Omit<RecentPlace, "savedAt">) => {
     if (!place.placeId || (place.lat === 0 && place.lng === 0)) return;
