@@ -117,9 +117,18 @@ export class CachedMatrixProvider implements RoutingMatrixProvider {
     // Materialise the full N×N matrix from the cache map.
     for (let i = 0; i < n; i += 1) {
       for (let j = 0; j < n; j += 1) {
-        if (i === j) continue;
+        if (i === j) {
+          distances[i][j] = 0;
+          durations[i][j] = 0;
+          continue;
+        }
         const from = rounded[i];
         const to = rounded[j];
+        if (from.lat === to.lat && from.lng === to.lng) {
+          distances[i][j] = 0;
+          durations[i][j] = 0;
+          continue;
+        }
         const entry = cacheByKey.get(pairKey(from.lat, from.lng, to.lat, to.lng));
         if (!entry) {
           throw new Error(
@@ -142,6 +151,7 @@ export class CachedMatrixProvider implements RoutingMatrixProvider {
     for (let i = 0; i < points.length; i += 1) {
       for (let j = 0; j < points.length; j += 1) {
         if (i === j) continue;
+        if (points[i].lat === points[j].lat && points[i].lng === points[j].lng) continue;
         const from = points[i];
         const to = points[j];
         writes.push(
