@@ -204,12 +204,16 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
     from the cluster, time-overlapping. Expected: D1 takes all 4 cluster-
     related tasks; D2 keeps its own pair.
     """
-    cluster_pickup = (36.7200, 3.2500)   # Bab Ezzouar-ish
-    cluster_dropoff = (36.6900, 2.9300)  # Mahelma-ish
+    # Geometry is deliberately polarised so each driver has a clear
+    # "natural" assignment: D1 sits on top of the cluster pickup; D2 sits
+    # ~30 km west, on top of its anchor pickups. Crossing the city to
+    # poach the other driver's cluster is geographically prohibitive.
+    cluster_pickup = (36.7200, 3.2500)   # Bab Ezzouar east
+    cluster_dropoff = (36.6900, 2.9300)  # Mahelma south-west
     near_cluster_pickup = (36.7220, 3.2530)
     near_cluster_dropoff = (36.6920, 2.9320)
-    east_pickup = (36.7370, 3.2200)      # D2's anchor pickup 1
-    east_dropoff = (36.7100, 2.9200)     # D2's anchor dropoff (Zeralda-ish)
+    west_pickup = (36.7100, 2.9200)      # D2 depot + anchor pickup
+    west_dropoff = (36.7050, 2.9000)     # anchor dropoff, near D2
 
     payload = {
         "jobId": "job-fairness",
@@ -219,9 +223,10 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
             "returnToDepot": False,
             "dropoffWithinSeconds": 7200,
             "colocatedMarginalServiceSeconds": 60,
-            # Worst-case fairness lever: use the production default × 4 to
-            # prove the new behaviour holds even under aggressive balancing.
-            "loadBalancingDzdPerTask": 200,
+            # Worst-case fairness lever: ~5× the typical default to prove
+            # the behaviour holds even under aggressive balancing. Units
+            # are DZD per minute of active-time imbalance.
+            "loadBalancingDzdPerActiveMinute": 10.0,
         },
         "drivers": [
             {
@@ -233,11 +238,11 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
                 "capacityUnits": 4,
             },
             {
-                "id": "D2-busy-east",
+                "id": "D2-busy-west",
                 "shiftStartS": 28800,
                 "shiftEndS": 61200,
-                "depotLat": east_pickup[0],
-                "depotLng": east_pickup[1],
+                "depotLat": west_pickup[0],
+                "depotLng": west_pickup[1],
                 "capacityUnits": 4,
             },
         ],
@@ -276,25 +281,25 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
             {
                 "id": "anchor-1",
                 "priority": "normal",
-                "pickupLat": east_pickup[0],
-                "pickupLng": east_pickup[1],
+                "pickupLat": west_pickup[0],
+                "pickupLng": west_pickup[1],
                 "pickupWindowStartS": 28800,
                 "pickupWindowEndS": 30600,
                 "pickupServiceS": 600,
-                "dropoffLat": east_dropoff[0],
-                "dropoffLng": east_dropoff[1],
+                "dropoffLat": west_dropoff[0],
+                "dropoffLng": west_dropoff[1],
                 "capacityUnits": 1,
             },
             {
                 "id": "anchor-2",
                 "priority": "normal",
-                "pickupLat": east_pickup[0],
-                "pickupLng": east_pickup[1],
+                "pickupLat": west_pickup[0],
+                "pickupLng": west_pickup[1],
                 "pickupWindowStartS": 28800,
                 "pickupWindowEndS": 30600,
                 "pickupServiceS": 600,
-                "dropoffLat": east_dropoff[0],
-                "dropoffLng": east_dropoff[1],
+                "dropoffLat": west_dropoff[0],
+                "dropoffLng": west_dropoff[1],
                 "capacityUnits": 1,
             },
         ],
@@ -311,7 +316,7 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
         if s["type"] == "pickup"
     }
     d2_task_ids = {
-        s["taskId"] for s in routes_by_driver["D2-busy-east"]["stops"]
+        s["taskId"] for s in routes_by_driver["D2-busy-west"]["stops"]
         if s["type"] == "pickup"
     }
     cluster_ids = {"cluster-1", "cluster-2", "cluster-3", "cluster-near"}
@@ -319,6 +324,114 @@ def test_carpool_keeps_nearby_extra_task_on_same_driver() -> None:
         f"Expected all cluster + near tasks on D1, got D1={d1_task_ids}, D2={d2_task_ids}"
     )
     assert cluster_ids.isdisjoint(d2_task_ids)
+
+
+def _shared_depot_payload(load_balance_per_min: float) -> dict:
+    """Two interchangeable drivers at the same depot and four
+    independent tasks spread along a corridor north-east of the depot.
+    Without a fairness term, the cheapest total arc is to send a single
+    driver out on a TSP-style sweep and leave the second driver idle —
+    every task added to the working driver costs only a short hop, and
+    splitting forces the second driver to make their own outbound +
+    return trip. With active-time fairness on, leaving one driver idle
+    is paid for in the span term, so the planner splits the work."""
+    depot = (36.7000, 3.0500)
+    task_pickups = [
+        (36.7050, 3.0600),
+        (36.7100, 3.0700),
+        (36.7150, 3.0800),
+        (36.7200, 3.0900),
+    ]
+    return {
+        "jobId": f"job-shared-{load_balance_per_min}",
+        "config": {
+            "maxSolveSeconds": 10,
+            "speedKmh": 50,
+            "returnToDepot": True,
+            "dropoffWithinSeconds": 7200,
+            "colocatedMarginalServiceSeconds": 60,
+            "loadBalancingDzdPerActiveMinute": load_balance_per_min,
+        },
+        "drivers": [
+            {
+                "id": f"D{i}",
+                "shiftStartS": 28800,
+                "shiftEndS": 64800,
+                "depotLat": depot[0],
+                "depotLng": depot[1],
+                "capacityUnits": 4,
+            }
+            for i in (1, 2)
+        ],
+        "tasks": [
+            {
+                "id": f"task-{i + 1}",
+                "priority": "normal",
+                "pickupLat": pickup[0],
+                "pickupLng": pickup[1],
+                "pickupWindowStartS": 28800,
+                "pickupWindowEndS": 50400,
+                "pickupServiceS": 600,
+                "dropoffLat": pickup[0] + 0.001,
+                "dropoffLng": pickup[1] + 0.001,
+                "capacityUnits": 1,
+            }
+            for i, pickup in enumerate(task_pickups)
+        ],
+    }
+
+
+def test_active_time_fairness_splits_workload_between_equal_drivers() -> None:
+    """Locks in the idle-gap fix from the dispatcher screenshot. With
+    two interchangeable drivers and several independent tasks, fairness
+    off lets the optimizer leave one driver idle (cheapest total arc).
+    Fairness on must split the work — the active-time span across
+    drivers shrinks. The previous task-count fairness was blind to
+    workload concentration on a single driver doing many short hops,
+    because a 4-vs-0 split was simply rejected by capacity but a 4-vs-0
+    *time* imbalance was invisible."""
+    no_fairness = client.post(
+        "/optimize", json=_shared_depot_payload(0.0)
+    ).json()
+    with_fairness = client.post(
+        "/optimize", json=_shared_depot_payload(20.0)
+    ).json()
+
+    assert no_fairness["unassigned"] == []
+    assert with_fairness["unassigned"] == []
+
+    def task_counts(result: dict) -> list[int]:
+        counts = []
+        for route in result["routes"]:
+            counts.append(sum(1 for s in route["stops"] if s["type"] == "pickup"))
+        # Empty drivers don't appear in `routes`; pad to the driver count.
+        while len(counts) < 2:
+            counts.append(0)
+        return sorted(counts)
+
+    counts_off = task_counts(no_fairness)
+    counts_on = task_counts(with_fairness)
+
+    # Without fairness, the optimizer happily piles everything on one
+    # driver: one driver does 4, the other 0.
+    assert counts_off == [0, 4], (
+        f"Expected fairness-off baseline of one driver doing all four "
+        f"tasks; got {counts_off}"
+    )
+
+    # With fairness on, no driver should be idle — the fairness term
+    # makes the 4-0 plan more expensive than a 2-2 (or 3-1) split.
+    assert counts_on[0] >= 1, (
+        f"Active-time fairness should leave no driver idle; got {counts_on}"
+    )
+    # And the gap between busiest and least-busy must be strictly
+    # smaller than the fairness-off baseline.
+    span_off = counts_off[-1] - counts_off[0]
+    span_on = counts_on[-1] - counts_on[0]
+    assert span_on < span_off, (
+        f"Active-time fairness failed to narrow the workload gap: "
+        f"counts_off={counts_off}, counts_on={counts_on}"
+    )
 
 
 def test_normal_penalty_below_arc_cost_drops_task() -> None:

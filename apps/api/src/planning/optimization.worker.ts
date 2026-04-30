@@ -18,7 +18,7 @@ type OptimizerRequest = {
     dropoffWithinSeconds: number;
     dropoffServiceSeconds: number;
     colocatedMarginalServiceSeconds: number;
-    loadBalancingDzdPerTask: number;
+    loadBalancingDzdPerActiveMinute: number;
     fuelCostMicroDzdPerMeter: number;
     timeCostMicroDzdPerSecond: number;
     unassignedPenaltyNormalDzd: number;
@@ -290,14 +290,22 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
       const timeCostMicroDzdPerSecond = Math.round(
         (config.timeCostDzdPerHour / 3600) * 1_000_000,
       );
-      // Preserve the existing loadBalancingKmPerTask semantic ("X km of
-      // detour acceptable per task of imbalance") under the new DZD-based
-      // optimizer. 1 km of fuel = price × L_per_100km / 100 DZD.
+      // Translate the legacy admin knob (`loadBalancingKmPerTask`, "X km
+      // of detour acceptable per task of imbalance") into the optimizer's
+      // active-time-based fairness lever. The optimizer now spans driver
+      // *working minutes* instead of task counts, so we convert via a
+      // typical task duration of ~20 active minutes:
+      //   DZD-per-task ≈ km/task × DZD/km
+      //   DZD-per-active-minute ≈ DZD-per-task / 20
+      // This keeps the same overall fairness magnitude under the default
+      // config (15 km × 2.82 DZD/km ÷ 20 min ≈ 2.1 DZD/min) without
+      // forcing a schema migration today.
+      const TYPICAL_ACTIVE_MINUTES_PER_TASK = 20;
       const fuelDzdPerKm =
         (config.dieselPricePerLiterDZD * config.fuelLPer100Km) / 100;
-      const loadBalancingDzdPerTask = Math.round(
-        config.loadBalancingKmPerTask * fuelDzdPerKm,
-      );
+      const loadBalancingDzdPerActiveMinute =
+        (config.loadBalancingKmPerTask * fuelDzdPerKm) /
+        TYPICAL_ACTIVE_MINUTES_PER_TASK;
 
       // Build the node list in the exact order the Python solver expects:
       // [depot_start_0..D-1, depot_end_0..D-1, then for each task:
@@ -324,7 +332,7 @@ export class OptimizationWorker implements OnModuleInit, OnModuleDestroy {
           dropoffWithinSeconds: config.dropoffWithinHours * 3600,
           dropoffServiceSeconds,
           colocatedMarginalServiceSeconds: config.colocatedMarginalServiceSeconds,
-          loadBalancingDzdPerTask,
+          loadBalancingDzdPerActiveMinute,
           fuelCostMicroDzdPerMeter,
           timeCostMicroDzdPerSecond,
           unassignedPenaltyNormalDzd: config.unassignedPenaltyNormalDzd,
